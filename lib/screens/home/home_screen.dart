@@ -210,93 +210,7 @@ class _ActiveTripCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              height: 150,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xffD7F4F0),
-                    Color(0xffF8FBFC),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 22,
-                    right: 22,
-                    top: 72,
-                    child: Container(
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: const Color(0xff006D77).withOpacity(.18),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const Positioned(
-                    left: 26,
-                    top: 57,
-                    child: _MapPin(label: "Start", color: Color(0xff102A43)),
-                  ),
-                  const Positioned(
-                    right: 26,
-                    top: 57,
-                    child: _MapPin(label: "ETA", color: Color(0xffF4A261)),
-                  ),
-                  Positioned(
-                    top: 64,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: SizedBox(
-                        width: 96,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: List.generate(
-                            4,
-                            (index) => Container(
-                              height: 9,
-                              width: 9,
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xff006D77,
-                                ).withOpacity(.45),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 18,
-                    right: 18,
-                    bottom: 14,
-                    child: Row(
-                      children: const [
-                        Expanded(
-                          child: _MiniMetric(
-                            label: "Distance",
-                            value: "18.4 km",
-                          ),
-                        ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: _MiniMetric(label: "ETA", value: "42 min"),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const _RanchiMapView(),
         ],
       ),
     );
@@ -729,33 +643,6 @@ class _LiveBadge extends StatelessWidget {
   }
 }
 
-class _MapPin extends StatelessWidget {
-  const _MapPin({
-    required this.label,
-    required this.color,
-  });
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(Icons.location_on_rounded, color: color, size: 31),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.blueGrey.shade600,
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _MiniMetric extends StatelessWidget {
   const _MiniMetric({
     required this.label,
@@ -793,6 +680,310 @@ class _MiniMetric extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RanchiMapView extends StatelessWidget {
+  const _RanchiMapView();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(
+        height: 220,
+        child: Stack(
+          children: [
+            const Positioned.fill(child: _OpenStreetMapTiles()),
+            Positioned.fill(
+              child: Container(color: Colors.white.withOpacity(.08)),
+            ),
+            const Positioned.fill(
+              child: CustomPaint(painter: _MapRoutePainter()),
+            ),
+            const Positioned(
+              left: 82,
+              top: 88,
+              child: _MapMarker(
+                label: "You",
+                color: Color(0xff006D77),
+                icon: Icons.my_location_rounded,
+              ),
+            ),
+            const Positioned(
+              left: 36,
+              top: 72,
+              child: _MapMarker(
+                label: "Start",
+                color: Color(0xff102A43),
+                icon: Icons.location_on_rounded,
+              ),
+            ),
+            const Positioned(
+              right: 38,
+              top: 58,
+              child: _MapMarker(
+                label: "Trip",
+                color: Color(0xffF4A261),
+                icon: Icons.flag_rounded,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              top: 12,
+              child: _MapChip(
+                icon: Icons.map_rounded,
+                label: "OpenStreetMap",
+                color: const Color(0xff102A43).withOpacity(.86),
+              ),
+            ),
+            Positioned(
+              right: 12,
+              top: 12,
+              child: _MapChip(
+                icon: Icons.sensors_rounded,
+                label: "Live GPS",
+                color: const Color(0xff006D77).withOpacity(.92),
+              ),
+            ),
+            const Positioned(
+              right: 10,
+              bottom: 76,
+              child: _MapAttribution(),
+            ),
+            const Positioned(
+              left: 18,
+              right: 18,
+              bottom: 14,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _MiniMetric(label: "Distance", value: "5.8 km"),
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: _MiniMetric(label: "ETA", value: "18 min"),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OpenStreetMapTiles extends StatelessWidget {
+  const _OpenStreetMapTiles();
+
+  static const _zoom = 15;
+  static const _centerX = 24149;
+  static const _centerY = 14197;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tileSize = constraints.maxWidth / 2.35;
+        final centerLeft = (constraints.maxWidth - tileSize) / 2;
+        final centerTop = (constraints.maxHeight - tileSize) / 2;
+
+        return Stack(
+          children: [
+            for (var dx = -1; dx <= 1; dx++)
+              for (var dy = -1; dy <= 1; dy++)
+                Positioned(
+                  left: centerLeft + dx * tileSize,
+                  top: centerTop + dy * tileSize,
+                  width: tileSize,
+                  height: tileSize,
+                  child: Image.network(
+                    "https://tile.openstreetmap.org/$_zoom/"
+                    "${_centerX + dx}/${_centerY + dy}.png",
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.medium,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: const Color(0xffDDEDEB),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.map_outlined,
+                          color: Colors.blueGrey.shade300,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _MapChip extends StatelessWidget {
+  const _MapChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.12),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapRoutePainter extends CustomPainter {
+  const _MapRoutePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final routeBase = Paint()
+      ..color = Colors.white.withOpacity(.72)
+      ..strokeWidth = 14
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final route = Paint()
+      ..color = const Color(0xff006D77)
+      ..strokeWidth = 6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(size.width * .16, size.height * .43)
+      ..cubicTo(
+        size.width * .30,
+        size.height * .36,
+        size.width * .42,
+        size.height * .55,
+        size.width * .56,
+        size.height * .47,
+      )
+      ..cubicTo(
+        size.width * .66,
+        size.height * .40,
+        size.width * .76,
+        size.height * .36,
+        size.width * .86,
+        size.height * .34,
+      );
+    canvas.drawPath(path, routeBase);
+    canvas.drawPath(path, route);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _MapMarker extends StatelessWidget {
+  const _MapMarker({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 34,
+          width: 34,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(.18),
+                blurRadius: 12,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 17),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(.92),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MapAttribution extends StatelessWidget {
+  const _MapAttribution();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(.82),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        "© OpenStreetMap",
+        style: TextStyle(
+          color: Colors.blueGrey.shade700,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
