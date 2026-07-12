@@ -166,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      "Track access, places, and attendance with confidence",
+                                      "Create trips, share live GPS, and keep your group in sync",
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: Colors.white.withOpacity(.82),
