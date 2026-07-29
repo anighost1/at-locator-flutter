@@ -20,37 +20,28 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xffF4F7F8),
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: _HomeHeader(
-                onLogout: () => context.go(RouteNames.login),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate(
-                  [
-                    const _ActiveTripCard(),
-                    const SizedBox(height: 16),
-                    const _TelemetryGrid(),
-                    const SizedBox(height: 16),
-                    const _CreateTripPanel(),
-                    const SizedBox(height: 16),
-                    _MembersPanel(members: _tripMembers),
-                    const SizedBox(height: 16),
-                    _GpsPacketsPanel(packets: _packets),
-                  ],
-                ),
-              ),
-            ),
-          ],
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: _HomeHeader(onLogout: () => context.go(RouteNames.login)),
         ),
-      ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              const _ActiveTripCard(),
+              const SizedBox(height: 16),
+              const _TelemetryGrid(),
+              const SizedBox(height: 16),
+              const _CreateTripPanel(),
+              const SizedBox(height: 16),
+              _MembersPanel(members: _tripMembers),
+              const SizedBox(height: 16),
+              _GpsPacketsPanel(packets: _packets),
+            ]),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -66,10 +57,7 @@ class _HomeHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Color(0xff102A43),
-            Color(0xff006D77),
-          ],
+          colors: [Color(0xff102A43), Color(0xff006D77)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -129,9 +117,9 @@ class _HomeHeader extends StatelessWidget {
           Text(
             "Ranchi city ride",
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -151,14 +139,8 @@ class _HomeHeader extends StatelessWidget {
                 icon: Icons.sensors_rounded,
                 label: "Socket connected",
               ),
-              _StatusPill(
-                icon: Icons.gps_fixed_rounded,
-                label: "GPS locked",
-              ),
-              _StatusPill(
-                icon: Icons.group_rounded,
-                label: "3 members",
-              ),
+              _StatusPill(icon: Icons.gps_fixed_rounded, label: "GPS locked"),
+              _StatusPill(icon: Icons.group_rounded, label: "3 members"),
             ],
           ),
         ],
@@ -191,9 +173,9 @@ class _ActiveTripCard extends StatelessWidget {
                     Text(
                       "Active trip",
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xff102A43),
-                          ),
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xff102A43),
+                      ),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -284,9 +266,9 @@ class _CreateTripPanel extends StatelessWidget {
                 child: Text(
                   "Create or share a trip",
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xff102A43),
-                      ),
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xff102A43),
+                  ),
                 ),
               ),
             ],
@@ -435,10 +417,7 @@ class _GpsPacketsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle(
-            title: "Recent GPS packets",
-            action: "websocket",
-          ),
+          const _SectionTitle(title: "Recent GPS packets", action: "websocket"),
           const SizedBox(height: 14),
           for (final packet in packets) ...[
             _PacketRow(packet: packet),
@@ -554,10 +533,7 @@ class _TelemetryCard extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({
-    required this.icon,
-    required this.label,
-  });
+  const _StatusPill({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -591,10 +567,7 @@ class _StatusPill extends StatelessWidget {
 }
 
 class _IconTile extends StatelessWidget {
-  const _IconTile({
-    required this.icon,
-    required this.color,
-  });
+  const _IconTile({required this.icon, required this.color});
 
   final IconData icon;
   final Color color;
@@ -644,10 +617,7 @@ class _LiveBadge extends StatelessWidget {
 }
 
 class _MiniMetric extends StatelessWidget {
-  const _MiniMetric({
-    required this.label,
-    required this.value,
-  });
+  const _MiniMetric({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -748,11 +718,7 @@ class _RanchiMapView extends StatelessWidget {
                 color: const Color(0xff006D77).withOpacity(.92),
               ),
             ),
-            const Positioned(
-              right: 10,
-              bottom: 76,
-              child: _MapAttribution(),
-            ),
+            const Positioned(right: 10, bottom: 76, child: _MapAttribution()),
             const Positioned(
               left: 18,
               right: 18,
@@ -990,10 +956,7 @@ class _MapAttribution extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.title,
-    required this.action,
-  });
+  const _SectionTitle({required this.title, required this.action});
 
   final String title;
   final String action;
@@ -1006,9 +969,9 @@ class _SectionTitle extends StatelessWidget {
           child: Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: const Color(0xff102A43),
-                  fontWeight: FontWeight.w900,
-                ),
+              color: const Color(0xff102A43),
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
         Text(
@@ -1038,10 +1001,7 @@ class _MemberRow extends StatelessWidget {
           backgroundColor: member.color.withOpacity(.16),
           child: Text(
             member.name.substring(0, 1),
-            style: TextStyle(
-              color: member.color,
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(color: member.color, fontWeight: FontWeight.w900),
           ),
         ),
         const SizedBox(width: 12),
