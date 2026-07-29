@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlocator/core/api/api_exception.dart';
 import 'package:atlocator/core/routing/route_names.dart';
 import 'package:atlocator/features/auth/models/login_request.dart';
 import 'package:atlocator/features/auth/repository/auth_repository.dart';
@@ -63,10 +64,15 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _loginErrorMessage(Object error) {
-    return error
-        .toString()
-        .replaceFirst("Exception: ", "")
-        .replaceFirst("FormatException: ", "");
+    if (error is ApiException) {
+      return error.message;
+    }
+
+    if (error is FormatException) {
+      return "Login response did not include a valid token.";
+    }
+
+    return "Unable to sign in. Please try again.";
   }
 
   void _showLoginError(String message) {

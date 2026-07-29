@@ -1,5 +1,7 @@
+import 'package:atlocator/core/config/app_config.dart';
+
 class ApiEndpoints {
-  static const baseUrl = "http://192.168.29.30:5000";
+  static const baseUrl = AppConfig.apiBaseUrl;
 
   static const login = "$baseUrl/api/auth/login";
 }
