@@ -28,8 +28,7 @@ class DashboardScreen extends StatelessWidget {
     final index = _getIndex(context);
 
     return Scaffold(
-      body: child,
-
+      body: SafeArea(child: child),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: index,
         type: BottomNavigationBarType.fixed,
