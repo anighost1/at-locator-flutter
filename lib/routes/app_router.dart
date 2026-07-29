@@ -6,13 +6,19 @@ import '../screens/home/home_screen.dart';
 import '../screens/map/map_screen.dart';
 import '../screens/history/history_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../screens/splash/splash_screen.dart';
 
 import 'route_names.dart';
 
 final GoRouter router = GoRouter(
-  initialLocation: RouteNames.login,
+  initialLocation: RouteNames.splash,
 
   routes: [
+    GoRoute(
+      path: RouteNames.splash,
+      builder: (context, state) => const SplashScreen(),
+    ),
+
     // Login Screen
     GoRoute(
       path: RouteNames.login,
