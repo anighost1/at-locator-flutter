@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../routes/route_names.dart';
+import 'package:atlocator/core/routing/route_names.dart';
+import 'package:atlocator/features/auth/session/auth_session.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -23,7 +24,12 @@ class HomeScreen extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
-          child: _HomeHeader(onLogout: () => context.go(RouteNames.login)),
+          child: _HomeHeader(
+            onLogout: () {
+              AuthSession.clear();
+              context.go(RouteNames.login);
+            },
+          ),
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),

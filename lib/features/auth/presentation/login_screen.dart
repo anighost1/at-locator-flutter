@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../routes/route_names.dart';
+import 'package:atlocator/core/routing/route_names.dart';
+import 'package:atlocator/features/auth/models/login_request.dart';
+import 'package:atlocator/features/auth/repository/auth_repository.dart';
+import 'package:atlocator/features/auth/session/auth_session.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,8 +15,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  final AuthRepository _authRepository = AuthRepository();
 
-  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
@@ -21,7 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -31,13 +35,48 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _loading = true);
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final response = await _authRepository.login(
+        LoginRequest(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        ),
+      );
 
-    setState(() => _loading = false);
+      if (!mounted) return;
 
-    if (!mounted) return;
-    context.go(RouteNames.home);
+      setState(() => _loading = false);
+
+      if (response.token.isEmpty) {
+        _showLoginError("Login failed. Please try again.");
+        return;
+      }
+
+      AuthSession.saveToken(response.token);
+      context.go(RouteNames.home);
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+      _showLoginError(_loginErrorMessage(error));
+    }
+  }
+
+  String _loginErrorMessage(Object error) {
+    return error
+        .toString()
+        .replaceFirst("Exception: ", "")
+        .replaceFirst("FormatException: ", "");
+  }
+
+  void _showLoginError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.red.shade700,
+      ),
+    );
   }
 
   @override
@@ -207,10 +246,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                     const SizedBox(height: 26),
                                     _LoginTextField(
-                                      controller: _usernameController,
-                                      label: "Username",
-                                      icon: Icons.person_outline_rounded,
-                                      validatorMessage: "Enter username",
+                                      controller: _emailController,
+                                      label: "Email",
+                                      icon: Icons.email_outlined,
+                                      keyboardType: TextInputType.emailAddress,
+                                      validatorMessage: "Enter email",
                                     ),
                                     const SizedBox(height: 18),
                                     _LoginTextField(
@@ -320,6 +360,7 @@ class _LoginTextField extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.validatorMessage,
+    this.keyboardType,
     this.obscureText = false,
     this.suffixIcon,
   });
@@ -328,6 +369,7 @@ class _LoginTextField extends StatelessWidget {
   final String label;
   final IconData icon;
   final String validatorMessage;
+  final TextInputType? keyboardType;
   final bool obscureText;
   final Widget? suffixIcon;
 
@@ -335,6 +377,7 @@ class _LoginTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      keyboardType: keyboardType,
       obscureText: obscureText,
       style: const TextStyle(
         color: Color(0xff12263F),

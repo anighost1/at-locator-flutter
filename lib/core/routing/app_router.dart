@@ -1,12 +1,12 @@
 import 'package:go_router/go_router.dart';
 
-import '../screens/auth/login_screen.dart';
-import '../screens/dashboard/dashboard_screen.dart';
-import '../screens/home/home_screen.dart';
-import '../screens/map/map_screen.dart';
-import '../screens/history/history_screen.dart';
-import '../screens/profile/profile_screen.dart';
-import '../screens/splash/splash_screen.dart';
+import 'package:atlocator/features/auth/presentation/login_screen.dart';
+import 'package:atlocator/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:atlocator/features/history/presentation/history_screen.dart';
+import 'package:atlocator/features/home/presentation/home_screen.dart';
+import 'package:atlocator/features/map/presentation/map_screen.dart';
+import 'package:atlocator/features/profile/presentation/profile_screen.dart';
+import 'package:atlocator/features/splash/presentation/splash_screen.dart';
 
 import 'route_names.dart';
 
