@@ -27,6 +27,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late final ValueNotifier<double> _headingNotifier;
 
   LatLng? _currentLocation;
+  final List<LatLng> _travelTrail = [];
   double _currentHeading = 0;
   StreamSubscription<Position>? _positionStream;
   StreamSubscription<CompassEvent>? _headingStream;
@@ -37,6 +38,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _hasCompassHeading = false;
   bool _locating = true;
   String? _locationMessage;
+
+  static const _maxTrailPoints = 500;
+  static const _minTrailPointDistanceMeters = 2.0;
 
   @override
   void initState() {
@@ -156,6 +160,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     setState(() {
       _currentLocation = point;
+      _addTrailPoint(point);
       if (!_hasCompassHeading &&
           position.heading.isFinite &&
           position.heading >= 0) {
@@ -185,6 +190,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     setState(() {
       _locating = false;
       _locationMessage = message;
+    });
+  }
+
+  void _addTrailPoint(LatLng point) {
+    if (_travelTrail.isNotEmpty) {
+      final previousPoint = _travelTrail.last;
+      final distance = const Distance().as(
+        LengthUnit.Meter,
+        previousPoint,
+        point,
+      );
+
+      if (distance < _minTrailPointDistanceMeters) return;
+    }
+
+    _travelTrail.add(point);
+
+    if (_travelTrail.length > _maxTrailPoints) {
+      _travelTrail.removeRange(0, _travelTrail.length - _maxTrailPoints);
+    }
+  }
+
+  void _clearTrail() {
+    final point = _currentLocation;
+
+    setState(() {
+      _travelTrail
+        ..clear()
+        ..addAll(point == null ? const [] : [point]);
     });
   }
 
@@ -238,9 +272,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.at_locator',
             ),
+            if (_travelTrail.length > 1)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: _travelTrail,
+                    color: const Color(0xff006D77),
+                    strokeWidth: 5,
+                    borderColor: Colors.white,
+                    borderStrokeWidth: 3,
+                  ),
+                ],
+              ),
             if (_currentLocation != null)
               MarkerLayer(
                 markers: [
+                  if (_travelTrail.isNotEmpty)
+                    Marker(
+                      point: _travelTrail.first,
+                      width: 34,
+                      height: 34,
+                      child: const _TrailStartMarker(),
+                    ),
                   Marker(
                     point: _currentLocation!,
                     width: 44,
@@ -282,6 +335,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TrailStartMarker extends StatelessWidget {
+  const _TrailStartMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xff006D77),
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.flag_rounded,
+          color: Colors.white,
+          size: 18,
+        ),
+      ),
     );
   }
 }
