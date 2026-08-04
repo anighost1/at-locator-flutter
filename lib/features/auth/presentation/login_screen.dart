@@ -53,7 +53,9 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      AuthSession.saveToken(response.token);
+      await AuthSession.saveToken(response.token);
+      if (!mounted) return;
+
       context.go(RouteNames.home);
     } catch (error) {
       if (!mounted) return;

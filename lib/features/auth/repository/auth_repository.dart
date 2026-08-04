@@ -6,7 +6,11 @@ import '../models/login_response.dart';
 
 class AuthRepository {
   Future<LoginResponse> login(LoginRequest request) async {
-    final json = await ApiClient.post(ApiEndpoints.login, request.toJson());
+    final json = await ApiClient.post(
+      ApiEndpoints.login,
+      request.toJson(),
+      useAuthToken: false,
+    );
 
     return LoginResponse.fromJson(json);
   }

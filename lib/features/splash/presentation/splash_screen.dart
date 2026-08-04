@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlocator/core/routing/route_names.dart';
+import 'package:atlocator/features/auth/session/auth_session.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -19,9 +20,10 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _openLogin() async {
     await Future.delayed(const Duration(milliseconds: 1800));
+    await AuthSession.load();
 
     if (!mounted) return;
-    context.go(RouteNames.login);
+    context.go(AuthSession.isLoggedIn ? RouteNames.home : RouteNames.login);
   }
 
   @override

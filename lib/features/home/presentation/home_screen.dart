@@ -25,8 +25,9 @@ class HomeScreen extends StatelessWidget {
       slivers: [
         SliverToBoxAdapter(
           child: _HomeHeader(
-            onLogout: () {
-              AuthSession.clear();
+            onLogout: () async {
+              await AuthSession.clear();
+              if (!context.mounted) return;
               context.go(RouteNames.login);
             },
           ),

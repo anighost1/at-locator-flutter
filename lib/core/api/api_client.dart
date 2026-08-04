@@ -3,12 +3,15 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'package:atlocator/features/auth/session/auth_session.dart';
+
 import 'api_exception.dart';
 
 class ApiClient {
   static Future<Map<String, dynamic>> post(
     String url,
     Map<String, dynamic> body,
+    {bool useAuthToken = true}
   ) async {
     final uri = Uri.tryParse(url);
 
@@ -20,7 +23,7 @@ class ApiClient {
       final response = await http
           .post(
             uri,
-            headers: {"Content-Type": "application/json"},
+            headers: _headers(useAuthToken: useAuthToken),
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 20));
@@ -48,6 +51,17 @@ class ApiClient {
         "Could not connect to the server. Check your network or API URL.",
       );
     }
+  }
+
+  static Map<String, String> _headers({required bool useAuthToken}) {
+    final headers = {"Content-Type": "application/json"};
+    final token = AuthSession.token;
+
+    if (useAuthToken && token != null && token.isNotEmpty) {
+      headers["Authorization"] = "Bearer $token";
+    }
+
+    return headers;
   }
 
   static Map<String, dynamic> _decodeResponse(String body) {
