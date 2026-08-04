@@ -25,6 +25,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   StreamSubscription<Position>? _positionStream;
 
   bool _followUser = true;
+  bool _locating = true;
+  String? _locationMessage;
 
   @override
   void initState() {
@@ -40,7 +42,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _startLocationTracking() async {
-    if (!await Geolocator.isLocationServiceEnabled()) return;
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      _setLocationMessage("Turn on location services to show your position.");
+      return;
+    }
 
     var permission = await Geolocator.checkPermission();
 
@@ -50,6 +55,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
+      _setLocationMessage("Allow location permission to show your position.");
       return;
     }
 
@@ -58,26 +64,31 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       distanceFilter: 5,
     );
 
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: settings,
+      ).timeout(const Duration(seconds: 12));
+      _showPosition(position);
+    } on Object {
+      _setLocationMessage("Finding your current location...");
+    }
+
     _positionStream = Geolocator.getPositionStream(locationSettings: settings)
-        .listen((pos) {
-          final point = LatLng(pos.latitude, pos.longitude);
-
-          if (!mounted) return;
-
-          setState(() => _currentLocation = point);
-
-          if (_followUser) {
-            _animatedMapController.animateTo(
-              dest: point,
-              zoom: _animatedMapController.mapController.camera.zoom < 5
-                  ? 17
-                  : _animatedMapController.mapController.camera.zoom,
-            );
-          }
+        .listen(_showPosition, onError: (_) {
+          _setLocationMessage("Unable to read location. Try again.");
         });
   }
 
   Future<void> _goToMyLocation() async {
+    if (_currentLocation == null) {
+      setState(() {
+        _locating = true;
+        _locationMessage = "Finding your current location...";
+      });
+      await _startLocationTracking();
+      return;
+    }
+
     if (_currentLocation == null) return;
 
     setState(() => _followUser = true);
@@ -87,6 +98,40 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       zoom: 18,
       rotation: 0,
     );
+  }
+
+  void _showPosition(Position position) {
+    final point = LatLng(position.latitude, position.longitude);
+
+    if (!mounted) return;
+
+    setState(() {
+      _currentLocation = point;
+      _locating = false;
+      _locationMessage = null;
+    });
+
+    if (_followUser) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        _animatedMapController.animateTo(
+          dest: point,
+          zoom: _animatedMapController.mapController.camera.zoom < 5
+              ? 17
+              : _animatedMapController.mapController.camera.zoom,
+        );
+      });
+    }
+  }
+
+  void _setLocationMessage(String message) {
+    if (!mounted) return;
+
+    setState(() {
+      _locating = false;
+      _locationMessage = message;
+    });
   }
 
   @override
@@ -142,6 +187,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
           ],
         ),
+        if (_locationMessage != null)
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 16,
+            child: _LocationNotice(message: _locationMessage!),
+          ),
         Positioned(
           bottom: 20,
           right: 16,
@@ -149,12 +201,56 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             heroTag: "locate",
             mini: true,
             onPressed: _goToMyLocation,
-            child: Icon(
-              _followUser ? Icons.my_location : Icons.location_searching,
-            ),
+            child: _locating
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  )
+                : Icon(
+                    _followUser ? Icons.my_location : Icons.location_searching,
+                  ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _LocationNotice extends StatelessWidget {
+  const _LocationNotice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 6,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.location_off_rounded,
+              color: Color(0xff006D77),
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Color(0xff102A43),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
