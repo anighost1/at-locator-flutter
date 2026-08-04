@@ -68,12 +68,13 @@ class LocationSocketService {
     final options = io.OptionBuilder()
         .setTransports(["websocket"])
         .disableAutoConnect()
+        .setPath(AppConfig.socketPath)
         .setAuth({
           if (token != null && token.isNotEmpty) "token": token,
         })
         .build();
 
-    _socket = io.io(AppConfig.apiBaseUrl, options);
+    _socket = io.io(AppConfig.socketBaseUrl, options);
     _socket
       ?..onConnect((_) {
         _updateSnapshot(_snapshot.copyWith(isConnected: true));
