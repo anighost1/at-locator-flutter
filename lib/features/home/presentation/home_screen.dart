@@ -8,56 +8,62 @@ import 'package:atlocator/features/location/location_socket_service.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  static const _tripMembers = [
-    _TripMember("Arun", "Driver", "Live", Color(0xff2A9D8F)),
-    _TripMember("Meera", "Friend", "2 min ago", Color(0xffF4A261)),
-    _TripMember("Nikhil", "Friend", "Invited", Color(0xff8D99AE)),
-  ];
-
-  static const _packets = [
-    _GpsPacket("23.344315", "85.309562", "32 km/h", "Now"),
-    _GpsPacket("23.351220", "85.317184", "28 km/h", "1 min"),
-    _GpsPacket("23.360418", "85.325702", "24 km/h", "3 min"),
-  ];
-
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: _HomeHeader(
-            onLogout: () async {
-              await LocationSocketService.instance.stop();
-              await AuthSession.clear();
-              if (!context.mounted) return;
-              context.go(RouteNames.login);
-            },
+    return ValueListenableBuilder<LocationSocketSnapshot>(
+      valueListenable: LocationSocketService.instance.snapshotNotifier,
+      builder: (context, snapshot, _) {
+        final members = [
+          _TripMember(
+            "User #${snapshot.userId ?? AuthSession.userId ?? "-"}",
+            "Current device",
+            snapshot.isConnected ? "Live" : "Offline",
+            snapshot.isConnected
+                ? const Color(0xff2A9D8F)
+                : const Color(0xff8D99AE),
           ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate([
-              // const _ActiveTripCard(),
-              const SizedBox(height: 16),
-              const _TelemetryGrid(),
-              const SizedBox(height: 16),
-              const _CreateTripPanel(),
-              const SizedBox(height: 16),
-              _MembersPanel(members: _tripMembers),
-              const SizedBox(height: 16),
-              // _GpsPacketsPanel(packets: _packets),
-            ]),
-          ),
-        ),
-      ],
+        ];
+
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: _HomeHeader(
+                snapshot: snapshot,
+                onLogout: () async {
+                  await LocationSocketService.instance.stop();
+                  await AuthSession.clear();
+                  if (!context.mounted) return;
+                  context.go(RouteNames.login);
+                },
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _TelemetryGrid(snapshot: snapshot),
+                  const SizedBox(height: 16),
+                  _CreateTripPanel(snapshot: snapshot),
+                  const SizedBox(height: 16),
+                  _MembersPanel(members: members),
+                  if (snapshot.recentPackets.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _GpsPacketsPanel(packets: snapshot.recentPackets),
+                  ],
+                ]),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.onLogout});
+  const _HomeHeader({required this.snapshot, required this.onLogout});
 
+  final LocationSocketSnapshot snapshot;
   final VoidCallback onLogout;
 
   @override
@@ -124,7 +130,7 @@ class _HomeHeader extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           Text(
-            "Ranchi city ride",
+            "Trip #${snapshot.tripId}",
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -132,7 +138,9 @@ class _HomeHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            "Your device is sending GPS data to the trip websocket channel.",
+            snapshot.isConnected
+                ? "Your device is sending GPS data to ${snapshot.roomId}."
+                : "Connecting your device to ${snapshot.roomId}.",
             style: TextStyle(
               color: Colors.white.withOpacity(.78),
               fontSize: 14,
@@ -143,13 +151,21 @@ class _HomeHeader extends StatelessWidget {
           Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: const [
+            children: [
               _StatusPill(
                 icon: Icons.sensors_rounded,
-                label: "Socket connected",
+                label: snapshot.isConnected
+                    ? "Socket connected"
+                    : "Socket connecting",
               ),
-              _StatusPill(icon: Icons.gps_fixed_rounded, label: "GPS locked"),
-              _StatusPill(icon: Icons.group_rounded, label: "3 members"),
+              _StatusPill(
+                icon: Icons.gps_fixed_rounded,
+                label: snapshot.hasLocation ? "GPS locked" : "GPS searching",
+              ),
+              _StatusPill(
+                icon: Icons.person_rounded,
+                label: "User ${snapshot.userId ?? AuthSession.userId ?? "-"}",
+              ),
             ],
           ),
         ],
@@ -209,10 +225,14 @@ class _ActiveTripCard extends StatelessWidget {
 }
 
 class _TelemetryGrid extends StatelessWidget {
-  const _TelemetryGrid();
+  const _TelemetryGrid({required this.snapshot});
+
+  final LocationSocketSnapshot snapshot;
 
   @override
   Widget build(BuildContext context) {
+    final location = snapshot.latestLocation;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = constraints.maxWidth >= 720 ? 4 : 2;
@@ -223,31 +243,31 @@ class _TelemetryGrid extends StatelessWidget {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           childAspectRatio: 1.18,
-          children: const [
+          children: [
             _TelemetryCard(
               icon: Icons.speed_rounded,
               label: "Speed",
-              value: "36",
+              value: location?.speedKmh.toString() ?? "--",
               unit: "km/h",
             ),
             _TelemetryCard(
               icon: Icons.my_location_rounded,
               label: "Accuracy",
-              value: "8",
+              value: location?.accuracy.toString() ?? "--",
               unit: "m",
             ),
-            // _TelemetryCard(
-            //   icon: Icons.upload_rounded,
-            //   label: "Packets",
-            //   value: "1.2k",
-            //   unit: "sent",
-            // ),
-            // _TelemetryCard(
-            //   icon: Icons.battery_charging_full_rounded,
-            //   label: "Battery",
-            //   value: "82",
-            //   unit: "%",
-            // ),
+            _TelemetryCard(
+              icon: Icons.explore_rounded,
+              label: "Heading",
+              value: location?.heading.toString() ?? "--",
+              unit: "deg",
+            ),
+            _TelemetryCard(
+              icon: Icons.upload_rounded,
+              label: "Packets",
+              value: snapshot.recentPackets.length.toString(),
+              unit: "sent",
+            ),
           ],
         );
       },
@@ -256,7 +276,9 @@ class _TelemetryGrid extends StatelessWidget {
 }
 
 class _CreateTripPanel extends StatelessWidget {
-  const _CreateTripPanel();
+  const _CreateTripPanel({required this.snapshot});
+
+  final LocationSocketSnapshot snapshot;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +306,7 @@ class _CreateTripPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            "Start a private GPS stream, then let friends join with the trip code when you want company on the route.",
+            "Your live GPS stream is joined to this trip room. Share the room id with your backend tester or trip members.",
             style: TextStyle(
               color: Colors.blueGrey.shade600,
               fontSize: 14,
@@ -360,7 +382,7 @@ class _CreateTripPanel extends StatelessWidget {
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
-                    "Join code",
+                    "Room id",
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Color(0xff526A78),
@@ -368,9 +390,9 @@ class _CreateTripPanel extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Flexible(
+                Flexible(
                   child: Text(
-                    "AT-4821",
+                    snapshot.roomId,
                     textAlign: TextAlign.right,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -418,7 +440,7 @@ class _MembersPanel extends StatelessWidget {
 class _GpsPacketsPanel extends StatelessWidget {
   const _GpsPacketsPanel({required this.packets});
 
-  final List<_GpsPacket> packets;
+  final List<LocationTelemetry> packets;
 
   @override
   Widget build(BuildContext context) {
@@ -1062,7 +1084,7 @@ class _MemberRow extends StatelessWidget {
 class _PacketRow extends StatelessWidget {
   const _PacketRow({required this.packet});
 
-  final _GpsPacket packet;
+  final LocationTelemetry packet;
 
   @override
   Widget build(BuildContext context) {
@@ -1085,7 +1107,8 @@ class _PacketRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "${packet.latitude}, ${packet.longitude}",
+                  "${packet.latitude.toStringAsFixed(6)}, "
+                  "${packet.longitude.toStringAsFixed(6)}",
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1096,7 +1119,7 @@ class _PacketRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  packet.speed,
+                  "${packet.speedKmh} km/h",
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1111,7 +1134,7 @@ class _PacketRow extends StatelessWidget {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 52),
             child: Text(
-              packet.time,
+              _timeLabel(packet.recordedAt),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1125,6 +1148,16 @@ class _PacketRow extends StatelessWidget {
       ),
     );
   }
+
+  String _timeLabel(DateTime recordedAt) {
+    final age = DateTime.now().toUtc().difference(recordedAt);
+
+    if (age.inSeconds < 5) return "Now";
+    if (age.inSeconds < 60) return "${age.inSeconds}s";
+    if (age.inMinutes < 60) return "${age.inMinutes}m";
+
+    return "${age.inHours}h";
+  }
 }
 
 class _TripMember {
@@ -1136,11 +1169,3 @@ class _TripMember {
   final Color color;
 }
 
-class _GpsPacket {
-  const _GpsPacket(this.latitude, this.longitude, this.speed, this.time);
-
-  final String latitude;
-  final String longitude;
-  final String speed;
-  final String time;
-}

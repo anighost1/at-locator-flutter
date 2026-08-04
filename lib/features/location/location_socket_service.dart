@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -14,9 +15,15 @@ class LocationSocketService {
   io.Socket? _socket;
   StreamSubscription<Position>? _positionSubscription;
   bool _started = false;
+  LocationSocketSnapshot _snapshot = LocationSocketSnapshot.initial();
+
+  final ValueNotifier<LocationSocketSnapshot> snapshotNotifier = ValueNotifier(
+    LocationSocketSnapshot.initial(),
+  );
 
   bool get isStarted => _started;
   bool get isConnected => _socket?.connected ?? false;
+  LocationSocketSnapshot get snapshot => _snapshot;
 
   Future<void> start({
     int? userId,
@@ -29,6 +36,14 @@ class LocationSocketService {
     if (resolvedUserId == null) return;
 
     _started = true;
+    _updateSnapshot(
+      _snapshot.copyWith(
+        userId: resolvedUserId,
+        tripId: tripId,
+        roomId: roomId,
+        isStarted: true,
+      ),
+    );
     _connectSocket(roomId);
     await _startLocationUpdates(
       userId: resolvedUserId,
@@ -44,6 +59,7 @@ class LocationSocketService {
     _socket?.disconnect();
     _socket?.dispose();
     _socket = null;
+    _updateSnapshot(_snapshot.copyWith(isStarted: false, isConnected: false));
   }
 
   void _connectSocket(String roomId) {
@@ -59,8 +75,17 @@ class LocationSocketService {
 
     _socket = io.io(AppConfig.apiBaseUrl, options);
     _socket
-      ?..onConnect((_) => _joinRoom(roomId))
-      ..onReconnect((_) => _joinRoom(roomId))
+      ?..onConnect((_) {
+        _updateSnapshot(_snapshot.copyWith(isConnected: true));
+        _joinRoom(roomId);
+      })
+      ..onDisconnect((_) {
+        _updateSnapshot(_snapshot.copyWith(isConnected: false));
+      })
+      ..onReconnect((_) {
+        _updateSnapshot(_snapshot.copyWith(isConnected: true));
+        _joinRoom(roomId);
+      })
       ..connect();
   }
 
@@ -87,22 +112,29 @@ class LocationSocketService {
       distanceFilter: 5,
     );
 
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: settings,
+      ).timeout(const Duration(seconds: 12));
+      _handlePosition(
+        position,
+        userId: userId,
+        tripId: tripId,
+        roomId: roomId,
+      );
+    } on Object {
+      // The stream below can still deliver a later location update.
+    }
+
     _positionSubscription =
         Geolocator.getPositionStream(locationSettings: settings).listen(
       (position) {
-        if (!_started || !isConnected) return;
-
-        _socket?.emit("location-update", {
-          "userId": userId,
-          "tripId": tripId,
-          "roomId": roomId,
-          "latitude": position.latitude,
-          "longitude": position.longitude,
-          "speed": _speedInKmh(position.speed),
-          "heading": _finiteOrZero(position.heading).round(),
-          "accuracy": _finiteOrZero(position.accuracy).round(),
-          "recordedAt": DateTime.now().toUtc().toIso8601String(),
-        });
+        _handlePosition(
+          position,
+          userId: userId,
+          tripId: tripId,
+          roomId: roomId,
+        );
       },
     );
   }
@@ -111,12 +143,139 @@ class LocationSocketService {
     _socket?.emit("join-room", roomId);
   }
 
-  int _speedInKmh(double metersPerSecond) {
+  void _updateSnapshot(LocationSocketSnapshot snapshot) {
+    _snapshot = snapshot;
+    snapshotNotifier.value = snapshot;
+  }
+
+  void _handlePosition(
+    Position position, {
+    required int userId,
+    required int tripId,
+    required String roomId,
+  }) {
+    if (!_started) return;
+
+    final telemetry = LocationTelemetry.fromPosition(position);
+    final packets = [telemetry, ..._snapshot.recentPackets].take(5).toList();
+
+    _updateSnapshot(
+      _snapshot.copyWith(
+        hasLocation: true,
+        latestLocation: telemetry,
+        recentPackets: packets,
+      ),
+    );
+
+    if (!isConnected) return;
+
+    _socket?.emit("location-update", {
+      "userId": userId,
+      "tripId": tripId,
+      "roomId": roomId,
+      "latitude": telemetry.latitude,
+      "longitude": telemetry.longitude,
+      "speed": telemetry.speedKmh,
+      "heading": telemetry.heading,
+      "accuracy": telemetry.accuracy,
+      "recordedAt": telemetry.recordedAt.toIso8601String(),
+    });
+  }
+}
+
+@immutable
+class LocationSocketSnapshot {
+  const LocationSocketSnapshot({
+    required this.isStarted,
+    required this.isConnected,
+    required this.hasLocation,
+    required this.userId,
+    required this.tripId,
+    required this.roomId,
+    required this.latestLocation,
+    required this.recentPackets,
+  });
+
+  factory LocationSocketSnapshot.initial() {
+    return const LocationSocketSnapshot(
+      isStarted: false,
+      isConnected: false,
+      hasLocation: false,
+      userId: null,
+      tripId: AppConfig.activeTripId,
+      roomId: AppConfig.activeTripRoomId,
+      latestLocation: null,
+      recentPackets: [],
+    );
+  }
+
+  final bool isStarted;
+  final bool isConnected;
+  final bool hasLocation;
+  final int? userId;
+  final int tripId;
+  final String roomId;
+  final LocationTelemetry? latestLocation;
+  final List<LocationTelemetry> recentPackets;
+
+  LocationSocketSnapshot copyWith({
+    bool? isStarted,
+    bool? isConnected,
+    bool? hasLocation,
+    int? userId,
+    int? tripId,
+    String? roomId,
+    LocationTelemetry? latestLocation,
+    List<LocationTelemetry>? recentPackets,
+  }) {
+    return LocationSocketSnapshot(
+      isStarted: isStarted ?? this.isStarted,
+      isConnected: isConnected ?? this.isConnected,
+      hasLocation: hasLocation ?? this.hasLocation,
+      userId: userId ?? this.userId,
+      tripId: tripId ?? this.tripId,
+      roomId: roomId ?? this.roomId,
+      latestLocation: latestLocation ?? this.latestLocation,
+      recentPackets: recentPackets ?? this.recentPackets,
+    );
+  }
+}
+
+@immutable
+class LocationTelemetry {
+  const LocationTelemetry({
+    required this.latitude,
+    required this.longitude,
+    required this.speedKmh,
+    required this.heading,
+    required this.accuracy,
+    required this.recordedAt,
+  });
+
+  factory LocationTelemetry.fromPosition(Position position) {
+    return LocationTelemetry(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      speedKmh: _speedInKmh(position.speed),
+      heading: _finiteOrZero(position.heading).round(),
+      accuracy: _finiteOrZero(position.accuracy).round(),
+      recordedAt: DateTime.now().toUtc(),
+    );
+  }
+
+  final double latitude;
+  final double longitude;
+  final int speedKmh;
+  final int heading;
+  final int accuracy;
+  final DateTime recordedAt;
+
+  static int _speedInKmh(double metersPerSecond) {
     final speed = _finiteOrZero(metersPerSecond);
     return (speed * 3.6).round();
   }
 
-  double _finiteOrZero(double value) {
+  static double _finiteOrZero(double value) {
     if (value.isFinite && value > 0) return value;
     return 0;
   }
