@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlocator/core/routing/route_names.dart';
 import 'package:atlocator/features/auth/session/auth_session.dart';
+import 'package:atlocator/features/location/location_socket_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -26,6 +27,7 @@ class HomeScreen extends StatelessWidget {
         SliverToBoxAdapter(
           child: _HomeHeader(
             onLogout: () async {
+              await LocationSocketService.instance.stop();
               await AuthSession.clear();
               if (!context.mounted) return;
               context.go(RouteNames.login);

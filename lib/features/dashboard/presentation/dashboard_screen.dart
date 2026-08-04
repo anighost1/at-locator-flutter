@@ -1,10 +1,31 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-class DashboardScreen extends StatelessWidget {
+import 'package:atlocator/features/location/location_socket_service.dart';
+
+class DashboardScreen extends StatefulWidget {
   final Widget child;
 
   const DashboardScreen({super.key, required this.child});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(LocationSocketService.instance.start());
+  }
+
+  @override
+  void dispose() {
+    unawaited(LocationSocketService.instance.stop());
+    super.dispose();
+  }
 
   int _getIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
@@ -29,7 +50,7 @@ class DashboardScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xffF7FAFB),
-      body: _DashboardSafeArea(child: child),
+      body: _DashboardSafeArea(child: widget.child),
       bottomNavigationBar: _DashboardNavigationBar(
         currentIndex: index,
         onTap: (value) {
