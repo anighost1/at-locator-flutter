@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -12,6 +13,16 @@ class AuthSession {
   static String? _token;
 
   static String? get token => _token;
+
+  static int? get userId {
+    final payload = _tokenPayload;
+    final value = payload?["userId"];
+
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+
+    return null;
+  }
 
   static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
@@ -45,5 +56,27 @@ class AuthSession {
     } on Object {
       // The local session is already cleared; storage can be retried later.
     }
+  }
+
+  static Map<String, dynamic>? get _tokenPayload {
+    final token = _token;
+
+    if (token == null || token.isEmpty) return null;
+
+    final parts = token.split(".");
+    if (parts.length != 3) return null;
+
+    try {
+      final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final decodedPayload = jsonDecode(payload);
+
+      if (decodedPayload is Map<String, dynamic>) {
+        return decodedPayload;
+      }
+    } on Object {
+      return null;
+    }
+
+    return null;
   }
 }

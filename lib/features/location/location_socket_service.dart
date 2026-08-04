@@ -19,15 +19,22 @@ class LocationSocketService {
   bool get isConnected => _socket?.connected ?? false;
 
   Future<void> start({
-    int userId = AppConfig.activeUserId,
+    int? userId,
     int tripId = AppConfig.activeTripId,
     String roomId = AppConfig.activeTripRoomId,
   }) async {
     if (_started) return;
 
+    final resolvedUserId = userId ?? AuthSession.userId;
+    if (resolvedUserId == null) return;
+
     _started = true;
     _connectSocket(roomId);
-    await _startLocationUpdates(userId: userId, tripId: tripId, roomId: roomId);
+    await _startLocationUpdates(
+      userId: resolvedUserId,
+      tripId: tripId,
+      roomId: roomId,
+    );
   }
 
   Future<void> stop() async {
