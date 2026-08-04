@@ -36,7 +36,7 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              const _ActiveTripCard(),
+              // const _ActiveTripCard(),
               const SizedBox(height: 16),
               const _TelemetryGrid(),
               const SizedBox(height: 16),
@@ -44,7 +44,7 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _MembersPanel(members: _tripMembers),
               const SizedBox(height: 16),
-              _GpsPacketsPanel(packets: _packets),
+              // _GpsPacketsPanel(packets: _packets),
             ]),
           ),
         ),
@@ -234,18 +234,18 @@ class _TelemetryGrid extends StatelessWidget {
               value: "8",
               unit: "m",
             ),
-            _TelemetryCard(
-              icon: Icons.upload_rounded,
-              label: "Packets",
-              value: "1.2k",
-              unit: "sent",
-            ),
-            _TelemetryCard(
-              icon: Icons.battery_charging_full_rounded,
-              label: "Battery",
-              value: "82",
-              unit: "%",
-            ),
+            // _TelemetryCard(
+            //   icon: Icons.upload_rounded,
+            //   label: "Packets",
+            //   value: "1.2k",
+            //   unit: "sent",
+            // ),
+            // _TelemetryCard(
+            //   icon: Icons.battery_charging_full_rounded,
+            //   label: "Battery",
+            //   value: "82",
+            //   unit: "%",
+            // ),
           ],
         );
       },
