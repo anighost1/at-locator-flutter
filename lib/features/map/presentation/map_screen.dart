@@ -13,6 +13,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -29,6 +30,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   double _currentHeading = 0;
   StreamSubscription<Position>? _positionStream;
   StreamSubscription<CompassEvent>? _headingStream;
+  StreamSubscription<GyroscopeEvent>? _gyroscopeStream;
+  DateTime? _lastGyroscopeAt;
 
   bool _followUser = true;
   bool _hasCompassHeading = false;
@@ -48,6 +51,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     _startLocationTracking();
     _startHeadingTracking();
+    _startGyroscopeHeadingTracking();
   }
 
   void _startHeadingTracking() {
@@ -59,11 +63,30 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       if (heading == null || !heading.isFinite || !mounted) return;
 
-      setState(() {
-        _currentHeading = _normalizeHeading(heading);
-        _headingNotifier.value = _currentHeading;
-        _hasCompassHeading = true;
-      });
+      _setHeading(heading);
+      _hasCompassHeading = true;
+    });
+  }
+
+  void _startGyroscopeHeadingTracking() {
+    _gyroscopeStream = gyroscopeEventStream(
+      samplingPeriod: SensorInterval.uiInterval,
+    ).listen((event) {
+      final lastTimestamp = _lastGyroscopeAt;
+      _lastGyroscopeAt = event.timestamp;
+
+      if (lastTimestamp == null || !mounted) return;
+
+      final elapsedSeconds =
+          event.timestamp.difference(lastTimestamp).inMicroseconds / 1000000;
+
+      if (elapsedSeconds <= 0 || elapsedSeconds > 1) return;
+      if (event.z.abs() < 0.01) return;
+
+      final deltaDegrees = event.z * elapsedSeconds * 180 / math.pi;
+      _setHeading(_currentHeading - deltaDegrees);
+    }, onError: (_) {
+      _lastGyroscopeAt = null;
     });
   }
 
@@ -136,8 +159,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (!_hasCompassHeading &&
           position.heading.isFinite &&
           position.heading >= 0) {
-        _currentHeading = _normalizeHeading(position.heading);
-        _headingNotifier.value = _currentHeading;
+        _setHeading(position.heading, rebuild: false);
       }
       _locating = false;
       _locationMessage = null;
@@ -171,10 +193,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return normalizedHeading < 0 ? normalizedHeading + 360 : normalizedHeading;
   }
 
+  void _setHeading(double heading, {bool rebuild = true}) {
+    final normalizedHeading = _normalizeHeading(heading);
+
+    _currentHeading = normalizedHeading;
+    _headingNotifier.value = normalizedHeading;
+
+    if (rebuild && mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
     _positionStream?.cancel();
     _headingStream?.cancel();
+    _gyroscopeStream?.cancel();
     _headingNotifier.dispose();
     _animatedMapController.dispose();
     super.dispose();
