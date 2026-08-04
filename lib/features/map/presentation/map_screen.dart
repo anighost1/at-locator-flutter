@@ -4,7 +4,10 @@
 // want additional custom behavior.
 
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
@@ -20,11 +23,15 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late final AnimatedMapController _animatedMapController;
+  late final ValueNotifier<double> _headingNotifier;
 
   LatLng? _currentLocation;
+  double _currentHeading = 0;
   StreamSubscription<Position>? _positionStream;
+  StreamSubscription<CompassEvent>? _headingStream;
 
   bool _followUser = true;
+  bool _hasCompassHeading = false;
   bool _locating = true;
   String? _locationMessage;
 
@@ -32,6 +39,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
+    _headingNotifier = ValueNotifier(0);
     _animatedMapController = AnimatedMapController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
@@ -39,6 +47,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
 
     _startLocationTracking();
+    _startHeadingTracking();
+  }
+
+  void _startHeadingTracking() {
+    final events = FlutterCompass.events;
+    if (events == null) return;
+
+    _headingStream = events.listen((event) {
+      final heading = event.heading;
+
+      if (heading == null || !heading.isFinite || !mounted) return;
+
+      setState(() {
+        _currentHeading = _normalizeHeading(heading);
+        _headingNotifier.value = _currentHeading;
+        _hasCompassHeading = true;
+      });
+    });
   }
 
   Future<void> _startLocationTracking() async {
@@ -107,6 +133,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     setState(() {
       _currentLocation = point;
+      if (!_hasCompassHeading &&
+          position.heading.isFinite &&
+          position.heading >= 0) {
+        _currentHeading = _normalizeHeading(position.heading);
+        _headingNotifier.value = _currentHeading;
+      }
       _locating = false;
       _locationMessage = null;
     });
@@ -134,9 +166,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
+  double _normalizeHeading(double heading) {
+    final normalizedHeading = heading % 360;
+    return normalizedHeading < 0 ? normalizedHeading + 360 : normalizedHeading;
+  }
+
   @override
   void dispose() {
     _positionStream?.cancel();
+    _headingStream?.cancel();
+    _headingNotifier.dispose();
     _animatedMapController.dispose();
     super.dispose();
   }
@@ -170,17 +209,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 markers: [
                   Marker(
                     point: _currentLocation!,
-                    width: 28,
-                    height: 28,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: const [
-                          BoxShadow(blurRadius: 8, color: Colors.black26),
-                        ],
-                      ),
+                    width: 44,
+                    height: 44,
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _headingNotifier,
+                      builder: (context, heading, _) {
+                        return _HeadingMarker(headingDegrees: heading);
+                      },
                     ),
                   ),
                 ],
@@ -215,6 +250,61 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ],
     );
   }
+}
+
+class _HeadingMarker extends StatelessWidget {
+  const _HeadingMarker({required this.headingDegrees});
+
+  final double headingDegrees;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: headingDegrees * math.pi / 180,
+      child: CustomPaint(
+        painter: _HeadingMarkerPainter(),
+      ),
+    );
+  }
+}
+
+class _HeadingMarkerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(.22)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    final pointerPaint = Paint()
+      ..color = const Color(0xff006D77)
+      ..style = PaintingStyle.fill;
+    final bodyPaint = Paint()
+      ..color = const Color(0xff0B7285)
+      ..style = PaintingStyle.fill;
+    final ringPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5;
+    final dotPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    final pointer = ui.Path()
+      ..moveTo(center.dx, 3)
+      ..lineTo(center.dx - 7, center.dy - 3)
+      ..lineTo(center.dx + 7, center.dy - 3)
+      ..close();
+
+    canvas.drawCircle(center.translate(0, 2), 12, shadowPaint);
+    canvas.drawPath(pointer.shift(const Offset(0, 2)), shadowPaint);
+    canvas.drawPath(pointer, pointerPaint);
+    canvas.drawCircle(center, 11, bodyPaint);
+    canvas.drawCircle(center, 11, ringPaint);
+    canvas.drawCircle(center, 3.5, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeadingMarkerPainter oldDelegate) => false;
 }
 
 class _LocationNotice extends StatelessWidget {
