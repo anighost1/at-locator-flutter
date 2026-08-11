@@ -273,7 +273,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       context: context,
       isScrollControlled: false,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      builder: (_) {
+      builder: (BuildContext sheetContext) {
         final lastSeen = _relativeTime(member.recordedAt);
         return Padding(
           padding: const EdgeInsets.all(16.0),
@@ -336,14 +336,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       icon: const Icon(Icons.flight_takeoff_rounded),
                       label: const Text('Fly to user'),
                       onPressed: () {
-                        Navigator.of(context).pop();
+                        Navigator.of(sheetContext).pop();
                         _animatedMapController.animateTo(dest: point, zoom: 17);
                       },
                     ),
                   ),
                   const SizedBox(width: 12),
                   OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: () => Navigator.of(sheetContext).pop(),
                     child: const Text('Close'),
                   ),
                 ],
