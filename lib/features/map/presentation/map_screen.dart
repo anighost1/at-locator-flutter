@@ -23,8 +23,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   late final AnimatedMapController _animatedMapController;
   late final ValueNotifier<double> _headingNotifier;
 
+  // heading state
+  double _currentHeading = 0.0;
+
   LatLng? _currentLocation;
   final List<LatLng> _travelTrail = [];
+  // location / sensor subscriptions
+  StreamSubscription? _positionStream;
+  StreamSubscription? _headingStream;
+  StreamSubscription? _gyroscopeStream;
+  // whether map should follow user's location
+  bool _followUser = true;
+  // transient UI state
+  String? _locationMessage;
+  bool _locating = false;
   // Temporary dummy members for UI/testing when no real members available
   final List<MemberLocation> _dummyMembers = [
     MemberLocation(
@@ -34,7 +46,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       speedKmh: 12,
       heading: 85,
       accuracy: 5,
-      recordedAt: DateTime.now().toUtc().subtract(const Duration(minutes: 1)),
+      recordedAt: DateTime.utc(2026, 8, 12).subtract(Duration(minutes: 1)),
       displayName: 'Alice',
     ),
     MemberLocation(
@@ -44,7 +56,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       speedKmh: 7,
       heading: 200,
       accuracy: 8,
-      recordedAt: DateTime.now().toUtc().subtract(const Duration(minutes: 3)),
+      recordedAt: DateTime.utc(2026, 8, 12).subtract(Duration(minutes: 3)),
       displayName: 'Bob',
     ),
     MemberLocation(
@@ -54,208 +66,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       speedKmh: 0,
       heading: 0,
       accuracy: 4,
-      recordedAt: DateTime.now().toUtc().subtract(const Duration(minutes: 6)),
+      recordedAt: DateTime.utc(2026, 8, 12).subtract(Duration(minutes: 6)),
       displayName: 'Carol',
     ),
   ];
-  double _currentHeading = 0;
-  StreamSubscription<Position>? _positionStream;
-  StreamSubscription<CompassEvent>? _headingStream;
-  StreamSubscription<GyroscopeEvent>? _gyroscopeStream;
-  DateTime? _lastGyroscopeAt;
-
-  bool _followUser = true;
-  bool _hasCompassHeading = false;
-  bool _locating = true;
-  String? _locationMessage;
-
-  static const _maxTrailPoints = 500;
-  static const _minTrailPointDistanceMeters = 2.0;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _headingNotifier = ValueNotifier(0);
-    _animatedMapController = AnimatedMapController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-      curve: Curves.easeInOutCubic,
-    );
-
-    _startLocationTracking();
-    _startHeadingTracking();
-    _startGyroscopeHeadingTracking();
-  }
-
-  void _startHeadingTracking() {
-    final events = FlutterCompass.events;
-    if (events == null) return;
-
-    _headingStream = events.listen((event) {
-      final heading = event.heading;
-
-      if (heading == null || !heading.isFinite || !mounted) return;
-
-      _setHeading(heading);
-      _hasCompassHeading = true;
-    });
-  }
-
-  void _startGyroscopeHeadingTracking() {
-    _gyroscopeStream = gyroscopeEventStream(
-      samplingPeriod: SensorInterval.uiInterval,
-    ).listen((event) {
-      final lastTimestamp = _lastGyroscopeAt;
-      _lastGyroscopeAt = event.timestamp;
-
-      if (lastTimestamp == null || !mounted) return;
-
-      final elapsedSeconds =
-          event.timestamp.difference(lastTimestamp).inMicroseconds / 1000000;
-
-      if (elapsedSeconds <= 0 || elapsedSeconds > 1) return;
-      if (event.z.abs() < 0.01) return;
-
-      final deltaDegrees = event.z * elapsedSeconds * 180 / math.pi;
-      _setHeading(_currentHeading - deltaDegrees);
-    }, onError: (_) {
-      _lastGyroscopeAt = null;
-    });
-  }
-
-  Future<void> _startLocationTracking() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      _setLocationMessage("Turn on location services to show your position.");
-      return;
-    }
-
-    var permission = await Geolocator.checkPermission();
-
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      _setLocationMessage("Allow location permission to show your position.");
-      return;
-    }
-
-    const settings = LocationSettings(
-      accuracy: LocationAccuracy.best,
-      distanceFilter: 5,
-    );
-
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: settings,
-      ).timeout(const Duration(seconds: 12));
-      _showPosition(position);
-    } on Object {
-      _setLocationMessage("Finding your current location...");
-    }
-
-    _positionStream = Geolocator.getPositionStream(locationSettings: settings)
-        .listen(_showPosition, onError: (_) {
-          _setLocationMessage("Unable to read location. Try again.");
-        });
-  }
-
-  Future<void> _goToMyLocation() async {
-    if (_currentLocation == null) {
-      setState(() {
-        _locating = true;
-        _locationMessage = "Finding your current location...";
-      });
-      await _startLocationTracking();
-      return;
-    }
-
-    if (_currentLocation == null) return;
-
-    setState(() => _followUser = true);
-
-    await _animatedMapController.animateTo(
-      dest: _currentLocation,
-      zoom: 18,
-      rotation: 0,
-    );
-  }
-
-  void _showPosition(Position position) {
-    final point = LatLng(position.latitude, position.longitude);
-
-    if (!mounted) return;
-
-    setState(() {
-      _currentLocation = point;
-      _addTrailPoint(point);
-      if (!_hasCompassHeading &&
-          position.heading.isFinite &&
-          position.heading >= 0) {
-        _setHeading(position.heading, rebuild: false);
-      }
-      _locating = false;
-      _locationMessage = null;
-    });
-
-    if (_followUser) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-
-        _animatedMapController.animateTo(
-          dest: point,
-          zoom: _animatedMapController.mapController.camera.zoom < 5
-              ? 17
-              : _animatedMapController.mapController.camera.zoom,
-        );
-      });
-    }
-  }
-
-  void _setLocationMessage(String message) {
-    if (!mounted) return;
-
-    setState(() {
-      _locating = false;
-      _locationMessage = message;
-    });
-  }
-
-  void _addTrailPoint(LatLng point) {
-    if (_travelTrail.isNotEmpty) {
-      final previousPoint = _travelTrail.last;
-      final distance = const Distance().as(
-        LengthUnit.Meter,
-        previousPoint,
-        point,
-      );
-
-      if (distance < _minTrailPointDistanceMeters) return;
-    }
-
-    _travelTrail.add(point);
-
-    if (_travelTrail.length > _maxTrailPoints) {
-      _travelTrail.removeRange(0, _travelTrail.length - _maxTrailPoints);
-    }
-  }
-
-  void _clearTrail() {
-    final point = _currentLocation;
-
-    setState(() {
-      _travelTrail
-        ..clear()
-        ..addAll(point == null ? const [] : [point]);
-    });
-  }
-
-  double _normalizeHeading(double heading) {
-    final normalizedHeading = heading % 360;
-    return normalizedHeading < 0 ? normalizedHeading + 360 : normalizedHeading;
-  }
 
   void _setHeading(double heading, {bool rebuild = true}) {
     final normalizedHeading = _normalizeHeading(heading);
@@ -267,6 +81,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       setState(() {});
     }
   }
+
+  double _normalizeHeading(double heading) {
+    final h = heading % 360;
+    return h < 0 ? h + 360 : h;
+  }
+
+  Future<void> _goToMyLocation() async {
+    if (_currentLocation == null) return;
+    setState(() => _locating = true);
+    try {
+      await _animatedMapController.animateTo(dest: _currentLocation!, zoom: 17);
+    } catch (_) {}
+    if (mounted) setState(() => _locating = false);
+  }
+  
+  @override
+  void initState() {
+    super.initState();
+    _animatedMapController = AnimatedMapController(mapController: MapController(), vsync: this);
+    _headingNotifier = ValueNotifier<double>(_currentHeading);
+    
+    // Try to get last known position asynchronously (non-blocking)
+    Geolocator.getLastKnownPosition().then((pos) {
+      if (pos != null && mounted) {
+        _currentLocation = LatLng(pos.latitude, pos.longitude);
+        setState(() {});
+      }
+    }).catchError((_) {});
+  }
+ 
 
   void _showMemberSheet(BuildContext context, MemberLocation member, LatLng point) {
     showModalBottomSheet(
