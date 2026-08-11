@@ -68,28 +68,45 @@ class LocationSocketService {
 
   void _connectSocket(String roomId) {
     final token = AuthSession.token;
+    final normalizedPath = _normalizeSocketPath(AppConfig.socketPath);
 
     final options = io.OptionBuilder()
-        .setTransports(["websocket"])
+        .setTransports(["websocket", "polling"])
         .disableAutoConnect()
-        .setPath(AppConfig.socketPath)
+        .setPath(normalizedPath)
         .setAuth({if (token != null && token.isNotEmpty) "token": token})
         .build();
 
     _socket = io.io(AppConfig.socketBaseUrl, options);
     _socket
       ?..onConnect((_) {
+        debugPrint("Socket connected to ${AppConfig.socketBaseUrl}$normalizedPath");
         _updateSnapshot(_snapshot.copyWith(isConnected: true));
         _joinRoom(roomId);
       })
-      ..onDisconnect((_) {
+      ..onConnectError((error) {
+        debugPrint("Socket connection failed: $error");
+        _updateSnapshot(_snapshot.copyWith(isConnected: false));
+      })
+      ..onError((error) {
+        debugPrint("Socket runtime error: $error");
+      })
+      ..onDisconnect((reason) {
+        debugPrint("Socket disconnected: $reason");
         _updateSnapshot(_snapshot.copyWith(isConnected: false));
       })
       ..onReconnect((_) {
+        debugPrint("Socket reconnected");
         _updateSnapshot(_snapshot.copyWith(isConnected: true));
         _joinRoom(roomId);
       })
       ..connect();
+  }
+
+  String _normalizeSocketPath(String path) {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) return "/socket.io";
+    return trimmed.startsWith("/") ? trimmed : "/$trimmed";
   }
 
   Future<void> _startLocationUpdates({
