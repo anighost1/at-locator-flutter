@@ -10,6 +10,7 @@ import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:atlocator/features/location/location_socket_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -24,6 +25,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   LatLng? _currentLocation;
   final List<LatLng> _travelTrail = [];
+  // Temporary dummy members for UI/testing when no real members available
+  final List<MemberLocation> _dummyMembers = [
+    MemberLocation(
+      userId: 1001,
+      latitude: 23.3446,
+      longitude: 85.3093,
+      speedKmh: 12,
+      heading: 85,
+      accuracy: 5,
+      recordedAt: DateTime.now().toUtc().subtract(const Duration(minutes: 1)),
+      displayName: 'Alice',
+    ),
+    MemberLocation(
+      userId: 1002,
+      latitude: 23.3439,
+      longitude: 85.3101,
+      speedKmh: 7,
+      heading: 200,
+      accuracy: 8,
+      recordedAt: DateTime.now().toUtc().subtract(const Duration(minutes: 3)),
+      displayName: 'Bob',
+    ),
+    MemberLocation(
+      userId: 1003,
+      latitude: 23.3451,
+      longitude: 85.3089,
+      speedKmh: 0,
+      heading: 0,
+      accuracy: 4,
+      recordedAt: DateTime.now().toUtc().subtract(const Duration(minutes: 6)),
+      displayName: 'Carol',
+    ),
+  ];
   double _currentHeading = 0;
   StreamSubscription<Position>? _positionStream;
   StreamSubscription<CompassEvent>? _headingStream;
@@ -234,6 +268,40 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _showMemberSheet(BuildContext context, MemberLocation member, LatLng point) {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              member.displayName ?? 'User ${member.userId}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text('ID: ${member.userId}'),
+            Text('Speed: ${member.speedKmh} km/h'),
+            Text('Heading: ${member.heading}°'),
+            Text('Accuracy: ${member.accuracy} m'),
+            Text('Last: ${member.recordedAt.toLocal()}'),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _animatedMapController.animateTo(dest: point, zoom: 17);
+              },
+              child: const Text('Fly to user'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _positionStream?.cancel();
@@ -303,6 +371,55 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
+            // Other members' markers from socket + dummy members
+            ValueListenableBuilder<LocationSocketSnapshot>(
+              valueListenable: LocationSocketService.instance.snapshotNotifier,
+              builder: (context, snapshot, _) {
+                final allMembers = [
+                  ...snapshot.members.values,
+                  ..._dummyMembers,
+                ];
+
+                if (allMembers.isEmpty) return const SizedBox.shrink();
+
+                final markers = allMembers.map<Marker>((member) {
+                  final point = LatLng(member.latitude, member.longitude);
+                  return Marker(
+                    point: point,
+                    width: 44,
+                    height: 44,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _showMemberSheet(context, member, point),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.orange.withOpacity(.95),
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.18),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            (member.displayName != null && member.displayName!.isNotEmpty)
+                                ? member.displayName!.substring(0, 1).toUpperCase()
+                                : member.userId.toString(),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList();
+
+                return MarkerLayer(markers: markers);
+              },
+            ),
           ],
         ),
         if (_locationMessage != null)
@@ -318,16 +435,127 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           child: FloatingActionButton(
             heroTag: "locate",
             mini: true,
+            backgroundColor: const Color(0xff0B7285),
+            tooltip: 'Center on my location',
+            elevation: 6,
             onPressed: _goToMyLocation,
             child: _locating
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                    child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
                   )
                 : Icon(
                     _followUser ? Icons.my_location : Icons.location_searching,
+                    color: Colors.white,
                   ),
+          ),
+        ),
+        Positioned(
+          bottom: 86,
+          left: 16,
+          child: FloatingActionButton(
+            heroTag: "users",
+            mini: true,
+            backgroundColor: const Color(0xff006D77),
+            tooltip: 'Show connected users',
+            elevation: 6,
+            onPressed: () {
+              final snapshot = LocationSocketService.instance.snapshot;
+              final members = [
+                ...snapshot.members.values,
+                ..._dummyMembers,
+              ];
+
+              showModalBottomSheet(
+                context: context,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                builder: (context) {
+                  return SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: SizedBox(
+                        height: math.min(420, members.length * 76 + 80),
+                        child: Column(
+                          children: [
+                            ListTile(
+                              title: const Text('Connected users'),
+                              subtitle: Text('${members.length} total'),
+                              trailing: IconButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.close),
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            Expanded(
+                              child: ListView.builder(
+                                itemCount: members.length,
+                                itemBuilder: (context, i) {
+                                  final m = members[i];
+                                  final distanceMeters = _currentLocation == null
+                                      ? null
+                                      : const Distance().as(
+                                          LengthUnit.Meter,
+                                          _currentLocation!,
+                                          LatLng(m.latitude, m.longitude),
+                                        );
+
+                                  final distanceText = distanceMeters == null
+                                      ? '—'
+                                      : (distanceMeters >= 1000
+                                          ? '${(distanceMeters / 1000).toStringAsFixed(2)} km'
+                                          : '${distanceMeters.round()} m');
+
+                                  return ListTile(
+                                    leading: Stack(
+                                      alignment: Alignment.bottomRight,
+                                      children: [
+                                        CircleAvatar(
+                                          backgroundColor: Colors.orange,
+                                          child: Text(
+                                            m.displayName != null && m.displayName!.isNotEmpty
+                                                ? m.displayName!.substring(0, 1).toUpperCase()
+                                                : m.userId.toString(),
+                                            style: const TextStyle(color: Colors.white),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            color: Colors.green,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: Colors.white, width: 1.6),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    title: Text(m.displayName ?? 'User ${m.userId}'),
+                                    subtitle: Text('Last: ${m.recordedAt.toLocal()} • $distanceText'),
+                                    trailing: IconButton(
+                                      tooltip: 'Fly to user',
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                        _animatedMapController.animateTo(
+                                          dest: LatLng(m.latitude, m.longitude),
+                                          zoom: 17,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.flight_takeoff_rounded),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+            child: const Icon(Icons.people_rounded, color: Colors.white),
           ),
         ),
       ],
