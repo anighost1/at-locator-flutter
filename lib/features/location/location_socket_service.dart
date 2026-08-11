@@ -27,11 +27,12 @@ class LocationSocketService {
 
   Future<void> start({
     int? userId,
-    int tripId = AppConfig.activeTripId,
-    String roomId = AppConfig.activeTripRoomId,
+    required int tripId,
+    required String roomId,
   }) async {
     final resolvedUserId = userId ?? AuthSession.userId;
     if (resolvedUserId == null) return;
+    if (tripId <= 0 || roomId.trim().isEmpty) return;
 
     if (_started) {
       if (_snapshot.tripId == tripId && _snapshot.roomId == roomId) return;
@@ -62,7 +63,7 @@ class LocationSocketService {
     _socket?.disconnect();
     _socket?.dispose();
     _socket = null;
-    _updateSnapshot(_snapshot.copyWith(isStarted: false, isConnected: false));
+    _updateSnapshot(LocationSocketSnapshot.initial());
   }
 
   void _connectSocket(String roomId) {
@@ -151,7 +152,7 @@ class LocationSocketService {
     required int tripId,
     required String roomId,
   }) {
-    if (!_started) return;
+    if (!_started || tripId <= 0 || roomId.trim().isEmpty) return;
 
     final telemetry = LocationTelemetry.fromPosition(position);
     final packets = [telemetry, ..._snapshot.recentPackets].take(5).toList();
@@ -199,8 +200,8 @@ class LocationSocketSnapshot {
       isConnected: false,
       hasLocation: false,
       userId: null,
-      tripId: AppConfig.activeTripId,
-      roomId: AppConfig.activeTripRoomId,
+      tripId: 0,
+      roomId: "",
       latestLocation: null,
       recentPackets: [],
     );
