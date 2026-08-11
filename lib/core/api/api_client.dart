@@ -51,6 +51,18 @@ class ApiClient {
     );
 
     if (responseJson is List<dynamic>) return responseJson;
+    if (responseJson is Map<String, dynamic>) {
+      if (responseJson.isEmpty) return <dynamic>[];
+      if (responseJson["data"] is List<dynamic>) {
+        return responseJson["data"] as List<dynamic>;
+      }
+      if (responseJson["trips"] is List<dynamic>) {
+        return responseJson["trips"] as List<dynamic>;
+      }
+      if (responseJson["items"] is List<dynamic>) {
+        return responseJson["items"] as List<dynamic>;
+      }
+    }
 
     throw const FormatException("Expected a JSON array");
   }

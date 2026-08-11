@@ -26,9 +26,13 @@ class TripRepository {
   }
 
   Future<List<Trip>> getTrips() async {
-    final json = await ApiClient.getList(ApiEndpoints.trips);
-
-    return json.whereType<Map<String, dynamic>>().map(Trip.fromJson).toList();
+    try {
+      final json = await ApiClient.getList(ApiEndpoints.trips);
+      return json.whereType<Map<String, dynamic>>().map(Trip.fromJson).toList();
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) return const [];
+      rethrow;
+    }
   }
 
   Future<Trip> endTrip(int tripId) async {
