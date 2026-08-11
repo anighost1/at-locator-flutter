@@ -6,8 +6,21 @@ import 'package:atlocator/features/auth/session/auth_session.dart';
 import 'package:atlocator/features/location/location_socket_service.dart';
 import 'package:atlocator/features/trip/session/trip_session.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Ensure socket attempts to connect when HomeScreen is shown.
+    // `start()` is a no-op if there is no authenticated user.
+    LocationSocketService.instance.start();
+  }
 
   @override
   Widget build(BuildContext context) {
