@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import 'package:flutter_compass/flutter_compass.dart';
 
 import 'package:atlocator/core/config/app_config.dart';
 import 'package:atlocator/features/auth/session/auth_session.dart';
@@ -14,6 +15,7 @@ class LocationSocketService {
 
   io.Socket? _socket;
   StreamSubscription<Position>? _positionSubscription;
+  StreamSubscription<CompassEvent>? _compassSubscription;
   bool _started = false;
   LocationSocketSnapshot _snapshot = LocationSocketSnapshot.initial();
 
@@ -59,6 +61,8 @@ class LocationSocketService {
     _started = false;
     await _positionSubscription?.cancel();
     _positionSubscription = null;
+    await _compassSubscription?.cancel();
+    _compassSubscription = null;
     _socket?.disconnect();
     _socket?.dispose();
     _socket = null;
@@ -102,6 +106,33 @@ class LocationSocketService {
         _joinRoom(roomId);
       })
       ..connect();
+    // Start compass subscription so UI heading follows device orientation
+    _startCompass();
+  }
+
+  void _startCompass() {
+    final events = FlutterCompass.events;
+    if (events == null) return;
+
+    _compassSubscription?.cancel();
+    _compassSubscription = events.listen((event) {
+      final heading = event.heading;
+      if (heading == null || !heading.isFinite) return;
+
+      final current = _snapshot.latestLocation;
+      if (current == null) return;
+
+      final updated = LocationTelemetry(
+        latitude: current.latitude,
+        longitude: current.longitude,
+        speedKmh: current.speedKmh,
+        heading: heading.round(),
+        accuracy: current.accuracy,
+        recordedAt: current.recordedAt,
+      );
+
+      _updateSnapshot(_snapshot.copyWith(latestLocation: updated));
+    });
   }
 
   String _normalizeSocketPath(String path) {
