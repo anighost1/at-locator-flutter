@@ -271,34 +271,104 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _showMemberSheet(BuildContext context, MemberLocation member, LatLng point) {
     showModalBottomSheet(
       context: context,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              member.displayName ?? 'User ${member.userId}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            Text('ID: ${member.userId}'),
-            Text('Speed: ${member.speedKmh} km/h'),
-            Text('Heading: ${member.heading}°'),
-            Text('Accuracy: ${member.accuracy} m'),
-            Text('Last: ${member.recordedAt.toLocal()}'),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _animatedMapController.animateTo(dest: point, zoom: 17);
-              },
-              child: const Text('Fly to user'),
-            ),
-          ],
-        ),
-      ),
+      isScrollControlled: false,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      builder: (_) {
+        final lastSeen = _relativeTime(member.recordedAt);
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // handle
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 6,
+                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(6)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 36,
+                    backgroundColor: const Color(0xffFF8A65),
+                    child: Text(
+                      member.displayName != null && member.displayName!.isNotEmpty
+                          ? member.displayName!.substring(0, 1).toUpperCase()
+                          : member.userId.toString(),
+                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(member.displayName ?? 'User ${member.userId}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 4),
+                        Text('ID: ${member.userId}', style: TextStyle(color: Colors.grey.shade700)),
+                        const SizedBox(height: 6),
+                        Text('Last seen: $lastSeen', style: TextStyle(color: Colors.grey.shade600)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _infoChip(Icons.speed, '${member.speedKmh} km/h'),
+                  _infoChip(Icons.explore, '${member.heading}°'),
+                  _infoChip(Icons.gps_fixed, '${member.accuracy} m'),
+                  _infoChip(Icons.public, '${member.latitude.toStringAsFixed(5)}, ${member.longitude.toStringAsFixed(5)}'),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.flight_takeoff_rounded),
+                      label: const Text('Fly to user'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _animatedMapController.animateTo(dest: point, zoom: 17);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _relativeTime(DateTime utc) {
+    final diff = DateTime.now().toUtc().difference(utc);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  Widget _infoChip(IconData icon, String text) {
+    return Chip(
+      backgroundColor: Colors.grey.shade100,
+      avatar: Icon(icon, size: 16, color: Colors.grey.shade800),
+      label: Text(text, style: TextStyle(color: Colors.grey.shade800)),
     );
   }
 
@@ -465,19 +535,61 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
                     applyFilter('');
 
+                    List<MemberLocation> filteredItems() {
+                      if (query.isEmpty) return members;
+                      final q = query.toLowerCase();
+                      return members.where((m) {
+                        final name = (m.displayName ?? '').toLowerCase();
+                        return name.contains(q) || m.userId.toString().contains(q);
+                      }).toList();
+                    }
+
                     return SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                         child: SizedBox(
-                          height: math.min(520, filtered.length * 82 + 140),
+                          height: math.min(560, members.length * 100 + 160),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              // Drag handle
+                              Center(
+                                child: Container(
+                                  width: 44,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade300,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Header
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Connected Users', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                                        const SizedBox(height: 4),
+                                        Text('${members.length} nearby', style: Theme.of(context).textTheme.bodySmall),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close)),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Search only
                               Row(
                                 children: [
                                   Expanded(
                                     child: TextField(
                                       decoration: InputDecoration(
-                                        hintText: 'Search by name or id',
+                                        hintText: 'Search name or id',
                                         prefixIcon: const Icon(Icons.search),
                                         filled: true,
                                         fillColor: Colors.grey.shade100,
@@ -488,77 +600,139 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                       ),
                                       onChanged: (val) {
                                         setState(() {
-                                          applyFilter(val);
+                                          query = val;
                                         });
                                       },
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  IconButton(
-                                    tooltip: 'Close',
-                                    onPressed: () => Navigator.of(context).pop(),
-                                    icon: const Icon(Icons.close),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text('${filteredItems().length}'),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+
+                              const SizedBox(height: 12),
+
+                              // List of user cards
                               Expanded(
-                                child: filtered.isEmpty
-                                    ? Center(child: Text('No users found'))
-                                    : ListView.separated(
-                                        separatorBuilder: (_, __) => const Divider(height: 1),
-                                        itemCount: filtered.length,
-                                        itemBuilder: (context, i) {
-                                          final m = filtered[i];
-                                          final distanceMeters = _currentLocation == null
-                                              ? null
-                                              : const Distance().as(
-                                                  LengthUnit.Meter,
-                                                  _currentLocation!,
-                                                  LatLng(m.latitude, m.longitude),
-                                                );
+                                child: Builder(builder: (context) {
+                                  final items = filteredItems();
+                                  if (items.isEmpty) return const Center(child: Text('No users match your search'));
 
-                                          final distanceText = distanceMeters == null
-                                              ? '—'
-                                              : (distanceMeters >= 1000
-                                                  ? '${(distanceMeters / 1000).toStringAsFixed(2)} km'
-                                                  : '${distanceMeters.round()} m');
+                                  return ListView.separated(
+                                    itemCount: items.length,
+                                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    itemBuilder: (context, i) {
+                                      final m = items[i];
+                                      final distanceMeters = _currentLocation == null
+                                          ? null
+                                          : const Distance().as(
+                                              LengthUnit.Meter,
+                                              _currentLocation!,
+                                              LatLng(m.latitude, m.longitude),
+                                            );
 
-                                          return ListTile(
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                            leading: CircleAvatar(
-                                              radius: 22,
-                                              backgroundColor: Colors.orange,
-                                              child: Text(
-                                                m.displayName != null && m.displayName!.isNotEmpty
-                                                    ? m.displayName!.substring(0, 1).toUpperCase()
-                                                    : m.userId.toString(),
-                                                style: const TextStyle(color: Colors.white),
-                                              ),
+                                      final distanceText = distanceMeters == null
+                                          ? '—'
+                                          : (distanceMeters >= 1000
+                                              ? '${(distanceMeters / 1000).toStringAsFixed(2)} km'
+                                              : '${distanceMeters.round()} m');
+
+                                      return Card(
+                                        elevation: 2,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        child: InkWell(
+                                          onTap: () {
+                                            Navigator.of(context).pop();
+                                            _animatedMapController.animateTo(dest: LatLng(m.latitude, m.longitude), zoom: 17);
+                                          },
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10),
+                                            child: Row(
+                                              children: [
+                                                Stack(
+                                                  alignment: Alignment.bottomRight,
+                                                  children: [
+                                                    CircleAvatar(
+                                                      radius: 28,
+                                                      backgroundColor: const Color(0xffFF8A65),
+                                                      child: Text(
+                                                        m.displayName != null && m.displayName!.isNotEmpty
+                                                            ? m.displayName!.substring(0, 1).toUpperCase()
+                                                            : m.userId.toString(),
+                                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                                                      ),
+                                                    ),
+                                                    Container(
+                                                      width: 12,
+                                                      height: 12,
+                                                      margin: const EdgeInsets.only(right: 2, bottom: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: m.speedKmh > 0 ? Colors.green : Colors.grey,
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(color: Colors.white, width: 2),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(m.displayName ?? 'User ${m.userId}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                                      const SizedBox(height: 6),
+                                                      Row(
+                                                        children: [
+                                                          Icon(Icons.speed, size: 14, color: Colors.grey.shade700),
+                                                          const SizedBox(width: 6),
+                                                          Text('${m.speedKmh} km/h', style: TextStyle(color: Colors.grey.shade700)),
+                                                          const SizedBox(width: 12),
+                                                          Icon(Icons.location_on, size: 14, color: Colors.grey.shade700),
+                                                          const SizedBox(width: 6),
+                                                          Text(distanceText, style: TextStyle(color: Colors.grey.shade700)),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Column(
+                                                  children: [
+                                                    IconButton(
+                                                      tooltip: 'Fly to user',
+                                                      onPressed: () {
+                                                        Navigator.of(context).pop();
+                                                        _animatedMapController.animateTo(dest: LatLng(m.latitude, m.longitude), zoom: 17);
+                                                      },
+                                                      icon: const Icon(Icons.flight_takeoff_rounded),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    IconButton(
+                                                      tooltip: 'Details',
+                                                      onPressed: () {
+                                                        Navigator.of(context).pop();
+                                                        _showMemberSheet(context, m, LatLng(m.latitude, m.longitude));
+                                                      },
+                                                      icon: const Icon(Icons.info_outline),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
                                             ),
-                                            title: Text(m.displayName ?? 'User ${m.userId}'),
-                                            subtitle: Text('Last: ${m.recordedAt.toLocal()} • $distanceText'),
-                                            trailing: IconButton(
-                                              tooltip: 'Fly to user',
-                                              onPressed: () {
-                                                Navigator.of(context).pop();
-                                                _animatedMapController.animateTo(
-                                                  dest: LatLng(m.latitude, m.longitude),
-                                                  zoom: 17,
-                                                );
-                                              },
-                                              icon: const Icon(Icons.flight_takeoff_rounded),
-                                            ),
-                                            onTap: () {
-                                              Navigator.of(context).pop();
-                                              _animatedMapController.animateTo(
-                                                dest: LatLng(m.latitude, m.longitude),
-                                                zoom: 17,
-                                              );
-                                            },
-                                          );
-                                        },
-                                      ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  );
+                                }),
                               ),
                             ],
                           ),
