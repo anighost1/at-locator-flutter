@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:flutter_compass/flutter_compass.dart';
 
 import 'package:atlocator/core/config/app_config.dart';
 import 'package:atlocator/features/auth/session/auth_session.dart';
+import 'package:atlocator/features/location/foreground_task.dart';
 
 class LocationSocketService {
   LocationSocketService._();
@@ -50,6 +52,8 @@ class LocationSocketService {
         isStarted: true,
       ),
     );
+
+    await _startForegroundTask();
     _connectSocket(roomId);
     await _startLocationUpdates(
       userId: resolvedUserId,
@@ -59,6 +63,7 @@ class LocationSocketService {
   }
 
   Future<void> stop() async {
+    await _stopForegroundTask();
     _started = false;
     await _positionSubscription?.cancel();
     _positionSubscription = null;
@@ -266,6 +271,27 @@ class LocationSocketService {
   void _updateSnapshot(LocationSocketSnapshot snapshot) {
     _snapshot = snapshot;
     snapshotNotifier.value = snapshot;
+  }
+
+  Future<void> _startForegroundTask() async {
+    if (await FlutterForegroundTask.isRunningService) return;
+
+    await FlutterForegroundTask.startService(
+      serviceId: 256,
+      notificationTitle: 'AT Locator is running',
+      notificationText: 'Keeping socket connected in background',
+      notificationIcon: null,
+      notificationButtons: [
+        const NotificationButton(id: 'stop', text: 'Stop'),
+      ],
+      notificationInitialRoute: '/',
+      callback: startCallback,
+    );
+  }
+
+  Future<void> _stopForegroundTask() async {
+    if (!await FlutterForegroundTask.isRunningService) return;
+    await FlutterForegroundTask.stopService();
   }
 
   void _handleRemoteLocation(dynamic data) {
