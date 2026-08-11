@@ -32,6 +32,8 @@ class TripRepository {
     } on ApiException catch (error) {
       if (error.statusCode == 404) return const [];
       rethrow;
+    } on FormatException {
+      return const [];
     }
   }
 

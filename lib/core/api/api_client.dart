@@ -50,6 +50,13 @@ class ApiClient {
       useAuthToken: useAuthToken,
     );
 
+    final list = _extractList(responseJson);
+    if (list != null) return list;
+
+    throw const FormatException("Expected a JSON array");
+  }
+
+  static List<dynamic>? _extractList(dynamic responseJson) {
     if (responseJson is List<dynamic>) return responseJson;
     if (responseJson is Map<String, dynamic>) {
       if (responseJson.isEmpty) return <dynamic>[];
@@ -62,9 +69,17 @@ class ApiClient {
       if (responseJson["items"] is List<dynamic>) {
         return responseJson["items"] as List<dynamic>;
       }
+      if (responseJson["result"] is List<dynamic>) {
+        return responseJson["result"] as List<dynamic>;
+      }
+
+      for (final value in responseJson.values) {
+        final nestedList = _extractList(value);
+        if (nestedList != null) return nestedList;
+      }
     }
 
-    throw const FormatException("Expected a JSON array");
+    return null;
   }
 
   static Future<Map<String, dynamic>> put(

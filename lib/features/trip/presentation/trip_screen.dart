@@ -43,9 +43,23 @@ class _TripScreenState extends State<TripScreen> {
       _errorMessage = null;
     });
 
+    Trip? ongoing;
+    List<Trip> trips = const [];
+    Object? loadError;
+
     try {
-      final ongoing = await _repository.getOngoingTrip();
-      final trips = await _repository.getTrips();
+      try {
+        trips = await _repository.getTrips();
+      } on Object catch (tripError) {
+        debugPrint('TripRepository.getTrips failed: $tripError');
+      }
+
+      try {
+        ongoing = await _repository.getOngoingTrip();
+      } on Object catch (ongoingError) {
+        debugPrint('TripRepository.getOngoingTrip failed: $ongoingError');
+        ongoing = null;
+      }
 
       if (ongoing != null && ongoing.tripCode != null) {
         await TripSession.save(ongoing);
@@ -54,20 +68,20 @@ class _TripScreenState extends State<TripScreen> {
         await TripSession.clear();
         await LocationSocketService.instance.start();
       }
-
-      if (!mounted) return;
-      setState(() {
-        _ongoingTrip = ongoing;
-        _trips = trips;
-        _loading = false;
-      });
     } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = _messageFor(error);
-        _loading = false;
-      });
+      loadError = error;
     }
+
+    if (!mounted) return;
+
+    setState(() {
+      _ongoingTrip = ongoing;
+      _trips = trips;
+      _loading = false;
+      if (loadError != null) {
+        _errorMessage = _messageFor(loadError!);
+      }
+    });
   }
 
   Future<void> _createTrip() async {
