@@ -1,47 +1,214 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlocator/core/api/api_exception.dart';
 import 'package:atlocator/core/routing/route_names.dart';
 import 'package:atlocator/features/location/location_socket_service.dart';
-import 'package:atlocator/features/trip/presentation/trip_sample_data.dart';
+import 'package:atlocator/features/trip/models/trip_models.dart';
+import 'package:atlocator/features/trip/repository/trip_repository.dart';
+import 'package:atlocator/features/trip/session/trip_session.dart';
 
-class TripScreen extends StatelessWidget {
+class TripScreen extends StatefulWidget {
   const TripScreen({super.key});
 
   @override
+  State<TripScreen> createState() => _TripScreenState();
+}
+
+class _TripScreenState extends State<TripScreen> {
+  final _repository = TripRepository();
+  final _tripNameController = TextEditingController(text: "The Trip");
+
+  bool _loading = true;
+  bool _saving = false;
+  String? _errorMessage;
+  Trip? _ongoingTrip;
+  List<Trip> _trips = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrips();
+  }
+
+  @override
+  void dispose() {
+    _tripNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadTrips() async {
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final ongoing = await _repository.getOngoingTrip();
+      final trips = await _repository.getTrips();
+
+      if (ongoing != null && ongoing.tripCode != null) {
+        await TripSession.save(ongoing);
+        await _startTripSocket(ongoing);
+      } else {
+        await TripSession.clear();
+        await LocationSocketService.instance.stop();
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _ongoingTrip = ongoing;
+        _trips = trips;
+        _loading = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = _messageFor(error);
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _createTrip() async {
+    final name = _tripNameController.text.trim();
+    if (name.isEmpty) return;
+
+    setState(() {
+      _saving = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final trip = await _repository.createTrip(name);
+
+      if (trip.tripCode != null) {
+        await TripSession.save(trip);
+        await LocationSocketService.instance.stop();
+        await _startTripSocket(trip);
+      }
+
+      final trips = await _repository.getTrips();
+
+      if (!mounted) return;
+      setState(() {
+        _ongoingTrip = trip;
+        _trips = trips;
+        _saving = false;
+      });
+      _showSnack("Trip created with code ${trip.tripCode ?? "-"}");
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = _messageFor(error);
+        _saving = false;
+      });
+    }
+  }
+
+  Future<void> _endTrip() async {
+    final trip = _ongoingTrip;
+    if (trip == null) return;
+
+    setState(() {
+      _saving = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _repository.endTrip(trip.id);
+      await LocationSocketService.instance.stop();
+      await TripSession.clear();
+      final trips = await _repository.getTrips();
+
+      if (!mounted) return;
+      setState(() {
+        _ongoingTrip = null;
+        _trips = trips;
+        _saving = false;
+      });
+      _showSnack("Trip ended");
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = _messageFor(error);
+        _saving = false;
+      });
+    }
+  }
+
+  Future<void> _startTripSocket(Trip trip) async {
+    final tripCode = trip.tripCode;
+    if (tripCode == null || tripCode.isEmpty) return;
+
+    await LocationSocketService.instance.start(
+      tripId: trip.id,
+      roomId: tripCode,
+    );
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _messageFor(Object error) {
+    if (error is ApiException) return error.message;
+    if (error is FormatException) return error.message;
+
+    return "Unable to load trip details. Please try again.";
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<LocationSocketSnapshot>(
-      valueListenable: LocationSocketService.instance.snapshotNotifier,
-      builder: (context, snapshot, _) {
-        return CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _TripHeader(snapshot: snapshot)),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  snapshot.isStarted
-                      ? _OngoingTripPanel(snapshot: snapshot)
-                      : const _CreateTripPanel(),
+    return RefreshIndicator(
+      onRefresh: _loadTrips,
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: _TripHeader(ongoingTrip: _ongoingTrip)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                if (_errorMessage != null) ...[
+                  _ErrorPanel(message: _errorMessage!, onRetry: _loadTrips),
                   const SizedBox(height: 16),
-                  _TripHistoryPanel(trips: sampleTrips),
-                ]),
-              ),
+                ],
+                if (_loading)
+                  const _LoadingPanel()
+                else if (_ongoingTrip != null)
+                  _OngoingTripPanel(
+                    trip: _ongoingTrip!,
+                    saving: _saving,
+                    onEndTrip: _endTrip,
+                  )
+                else
+                  _CreateTripPanel(
+                    controller: _tripNameController,
+                    saving: _saving,
+                    onCreateTrip: _createTrip,
+                  ),
+                const SizedBox(height: 16),
+                _TripHistoryPanel(trips: _trips),
+              ]),
             ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _TripHeader extends StatelessWidget {
-  const _TripHeader({required this.snapshot});
+  const _TripHeader({required this.ongoingTrip});
 
-  final LocationSocketSnapshot snapshot;
+  final Trip? ongoingTrip;
 
   @override
   Widget build(BuildContext context) {
+    final trip = ongoingTrip;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
       decoration: const BoxDecoration(
@@ -87,9 +254,7 @@ class _TripHeader extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            snapshot.isStarted
-                ? "Trip #${snapshot.tripId} is live"
-                : "Create a new trip",
+            trip == null ? "Create a new trip" : "${trip.name} is live",
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -97,9 +262,9 @@ class _TripHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            snapshot.isStarted
-                ? "Room ${snapshot.roomId} is collecting location packets from this device."
-                : "Start a live trip, or replay a previous route from your trip history.",
+            trip == null
+                ? "Create a trip to receive a trip code and join the socket room with it."
+                : "Socket room code: ${trip.tripCode ?? "-"}",
             style: TextStyle(
               color: Colors.white.withValues(alpha: .78),
               fontSize: 14,
@@ -113,7 +278,15 @@ class _TripHeader extends StatelessWidget {
 }
 
 class _CreateTripPanel extends StatelessWidget {
-  const _CreateTripPanel();
+  const _CreateTripPanel({
+    required this.controller,
+    required this.saving,
+    required this.onCreateTrip,
+  });
+
+  final TextEditingController controller;
+  final bool saving;
+  final VoidCallback onCreateTrip;
 
   @override
   Widget build(BuildContext context) {
@@ -126,26 +299,38 @@ class _CreateTripPanel extends StatelessWidget {
             title: "No ongoing trip",
             color: Color(0xffF4A261),
           ),
-          const SizedBox(height: 12),
-          Text(
-            "Create a trip to begin sharing live GPS updates with the configured trip room.",
-            style: TextStyle(
-              color: Colors.blueGrey.shade600,
-              fontSize: 14,
-              height: 1.4,
+          const SizedBox(height: 16),
+          TextField(
+            controller: controller,
+            enabled: !saving,
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              labelText: "Trip name",
+              prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
+              filled: true,
+              fillColor: const Color(0xffF7FAFB),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xffD8E5E9)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xffD8E5E9)),
+              ),
             ),
+            onSubmitted: (_) => saving ? null : onCreateTrip(),
           ),
           const SizedBox(height: 18),
           FilledButton.icon(
-            onPressed: () async {
-              await LocationSocketService.instance.start();
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Trip tracking started")),
-              );
-            },
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text("Create Trip"),
+            onPressed: saving ? null : onCreateTrip,
+            icon: saving
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  )
+                : const Icon(Icons.play_arrow_rounded),
+            label: Text(saving ? "Creating" : "Create Trip"),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xff006D77),
               foregroundColor: Colors.white,
@@ -162,84 +347,104 @@ class _CreateTripPanel extends StatelessWidget {
 }
 
 class _OngoingTripPanel extends StatelessWidget {
-  const _OngoingTripPanel({required this.snapshot});
+  const _OngoingTripPanel({
+    required this.trip,
+    required this.saving,
+    required this.onEndTrip,
+  });
 
-  final LocationSocketSnapshot snapshot;
+  final Trip trip;
+  final bool saving;
+  final VoidCallback onEndTrip;
 
   @override
   Widget build(BuildContext context) {
-    final location = snapshot.latestLocation;
+    return ValueListenableBuilder<LocationSocketSnapshot>(
+      valueListenable: LocationSocketService.instance.snapshotNotifier,
+      builder: (context, snapshot, _) {
+        final location = snapshot.latestLocation;
 
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        return _Panel(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: _PanelTitle(
-                  icon: Icons.sensors_rounded,
-                  title: "Ongoing trip",
-                  color: Color(0xff2A9D8F),
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Expanded(
+                    child: _PanelTitle(
+                      icon: Icons.sensors_rounded,
+                      title: "Ongoing trip",
+                      color: Color(0xff2A9D8F),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xffE4F8F4),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      "LIVE",
+                      style: TextStyle(
+                        color: Color(0xff1D7E73),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xffE4F8F4),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: const Text(
-                  "LIVE",
-                  style: TextStyle(
-                    color: Color(0xff1D7E73),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
+              const SizedBox(height: 16),
+              _InfoRow(label: "Trip", value: "#${trip.id}"),
+              const SizedBox(height: 10),
+              _InfoRow(label: "Name", value: trip.name),
+              const SizedBox(height: 10),
+              _InfoRow(label: "Trip code", value: trip.tripCode ?? "-"),
+              const SizedBox(height: 10),
+              _InfoRow(
+                label: "Socket",
+                value: snapshot.isConnected ? "Connected" : "Connecting",
+              ),
+              const SizedBox(height: 10),
+              _InfoRow(
+                label: "Latest speed",
+                value: location == null
+                    ? "-- km/h"
+                    : "${location.speedKmh} km/h",
+              ),
+              const SizedBox(height: 10),
+              _InfoRow(
+                label: "Heading",
+                value: location == null ? "-- deg" : "${location.heading} deg",
+              ),
+              const SizedBox(height: 18),
+              OutlinedButton.icon(
+                onPressed: saving ? null : onEndTrip,
+                icon: saving
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      )
+                    : const Icon(Icons.stop_rounded),
+                label: Text(saving ? "Ending" : "End Trip"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xff006D77),
+                  minimumSize: const Size.fromHeight(48),
+                  side: const BorderSide(color: Color(0xffB8DAD8)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _InfoRow(label: "Trip", value: "#${snapshot.tripId}"),
-          const SizedBox(height: 10),
-          _InfoRow(label: "Room", value: snapshot.roomId),
-          const SizedBox(height: 10),
-          _InfoRow(
-            label: "Latest speed",
-            value: location == null ? "-- km/h" : "${location.speedKmh} km/h",
-          ),
-          const SizedBox(height: 10),
-          _InfoRow(
-            label: "Heading",
-            value: location == null ? "-- deg" : "${location.heading} deg",
-          ),
-          const SizedBox(height: 18),
-          OutlinedButton.icon(
-            onPressed: () async {
-              await LocationSocketService.instance.stop();
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Trip tracking stopped")),
-              );
-            },
-            icon: const Icon(Icons.stop_rounded),
-            label: const Text("End Trip"),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xff006D77),
-              minimumSize: const Size.fromHeight(48),
-              side: const BorderSide(color: Color(0xffB8DAD8)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -247,7 +452,7 @@ class _OngoingTripPanel extends StatelessWidget {
 class _TripHistoryPanel extends StatelessWidget {
   const _TripHistoryPanel({required this.trips});
 
-  final List<TripSummary> trips;
+  final List<Trip> trips;
 
   @override
   Widget build(BuildContext context) {
@@ -257,10 +462,19 @@ class _TripHistoryPanel extends StatelessWidget {
         children: [
           _SectionTitle(title: "Trip history", action: "${trips.length} trips"),
           const SizedBox(height: 14),
-          for (final trip in trips) ...[
-            _TripHistoryRow(trip: trip),
-            if (trip != trips.last) const Divider(height: 18),
-          ],
+          if (trips.isEmpty)
+            Text(
+              "No trips yet.",
+              style: TextStyle(
+                color: Colors.blueGrey.shade500,
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          else
+            for (final trip in trips) ...[
+              _TripHistoryRow(trip: trip),
+              if (trip != trips.last) const Divider(height: 18),
+            ],
         ],
       ),
     );
@@ -270,12 +484,12 @@ class _TripHistoryPanel extends StatelessWidget {
 class _TripHistoryRow extends StatelessWidget {
   const _TripHistoryRow({required this.trip});
 
-  final TripSummary trip;
+  final Trip trip;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.go(RouteNames.tripReplayPath(trip.id)),
+      onTap: () => context.go(RouteNames.tripReplayPath(trip.id.toString())),
       borderRadius: BorderRadius.circular(14),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -285,10 +499,15 @@ class _TripHistoryRow extends StatelessWidget {
               height: 44,
               width: 44,
               decoration: BoxDecoration(
-                color: const Color(0xffE8F3F2),
+                color: trip.isOngoing
+                    ? const Color(0xffE4F8F4)
+                    : const Color(0xffE8F3F2),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.replay_rounded, color: Color(0xff006D77)),
+              child: Icon(
+                trip.isOngoing ? Icons.sensors_rounded : Icons.replay_rounded,
+                color: const Color(0xff006D77),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -296,7 +515,7 @@ class _TripHistoryRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    trip.title,
+                    trip.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -306,7 +525,7 @@ class _TripHistoryRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    "${trip.subtitle} - ${trip.distanceKm.toStringAsFixed(1)} km",
+                    _dateRangeLabel(trip),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -318,29 +537,68 @@ class _TripHistoryRow extends StatelessWidget {
                 ],
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  "${trip.duration.inMinutes} min",
-                  style: const TextStyle(
-                    color: Color(0xff102A43),
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  "${trip.topSpeedKmh} km/h max",
-                  style: TextStyle(
-                    color: Colors.blueGrey.shade500,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            const SizedBox(width: 10),
+            Text(
+              trip.isOngoing ? "LIVE" : "Replay",
+              style: TextStyle(
+                color: trip.isOngoing
+                    ? const Color(0xff1D7E73)
+                    : Colors.blueGrey.shade500,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LoadingPanel extends StatelessWidget {
+  const _LoadingPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _Panel(
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.all(8),
+          child: CircularProgressIndicator(),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorPanel extends StatelessWidget {
+  const _ErrorPanel({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded, color: Color(0xffB42318)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xff102A43),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onRetry,
+            tooltip: "Retry",
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
       ),
     );
   }
@@ -463,15 +721,42 @@ class _InfoRow extends StatelessWidget {
             ),
           ),
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Color(0xff102A43),
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: Color(0xff102A43),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
       ],
     );
   }
+}
+
+String _dateRangeLabel(Trip trip) {
+  final start = trip.startedAt;
+  final end = trip.endedAt;
+
+  if (start == null) return trip.isOngoing ? "Ongoing" : "Completed";
+
+  final startLabel = _dateLabel(start);
+  if (end == null) return "Started $startLabel";
+
+  return "$startLabel - ${_dateLabel(end)}";
+}
+
+String _dateLabel(DateTime dateTime) {
+  final local = dateTime.toLocal();
+  final day = local.day.toString().padLeft(2, "0");
+  final month = local.month.toString().padLeft(2, "0");
+  final hour = local.hour.toString().padLeft(2, "0");
+  final minute = local.minute.toString().padLeft(2, "0");
+
+  return "$day/$month/$hour:$minute";
 }

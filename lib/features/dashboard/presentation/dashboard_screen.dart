@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlocator/core/routing/route_names.dart';
-import 'package:atlocator/features/location/location_socket_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Widget child;
@@ -16,18 +13,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  @override
-  void initState() {
-    super.initState();
-    unawaited(LocationSocketService.instance.start());
-  }
-
-  @override
-  void dispose() {
-    unawaited(LocationSocketService.instance.stop());
-    super.dispose();
-  }
-
   int _getIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
 

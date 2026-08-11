@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:atlocator/core/routing/route_names.dart';
 import 'package:atlocator/features/auth/session/auth_session.dart';
 import 'package:atlocator/features/location/location_socket_service.dart';
+import 'package:atlocator/features/trip/session/trip_session.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -32,6 +33,7 @@ class HomeScreen extends StatelessWidget {
                 onLogout: () async {
                   await LocationSocketService.instance.stop();
                   await AuthSession.clear();
+                  await TripSession.clear();
                   if (!context.mounted) return;
                   context.go(RouteNames.login);
                 },
@@ -1168,4 +1170,3 @@ class _TripMember {
   final String status;
   final Color color;
 }
-

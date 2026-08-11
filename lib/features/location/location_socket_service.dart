@@ -30,10 +30,13 @@ class LocationSocketService {
     int tripId = AppConfig.activeTripId,
     String roomId = AppConfig.activeTripRoomId,
   }) async {
-    if (_started) return;
-
     final resolvedUserId = userId ?? AuthSession.userId;
     if (resolvedUserId == null) return;
+
+    if (_started) {
+      if (_snapshot.tripId == tripId && _snapshot.roomId == roomId) return;
+      await stop();
+    }
 
     _started = true;
     _updateSnapshot(
@@ -69,9 +72,7 @@ class LocationSocketService {
         .setTransports(["websocket"])
         .disableAutoConnect()
         .setPath(AppConfig.socketPath)
-        .setAuth({
-          if (token != null && token.isNotEmpty) "token": token,
-        })
+        .setAuth({if (token != null && token.isNotEmpty) "token": token})
         .build();
 
     _socket = io.io(AppConfig.socketBaseUrl, options);
@@ -117,27 +118,22 @@ class LocationSocketService {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: settings,
       ).timeout(const Duration(seconds: 12));
-      _handlePosition(
-        position,
-        userId: userId,
-        tripId: tripId,
-        roomId: roomId,
-      );
+      _handlePosition(position, userId: userId, tripId: tripId, roomId: roomId);
     } on Object {
       // The stream below can still deliver a later location update.
     }
 
     _positionSubscription =
-        Geolocator.getPositionStream(locationSettings: settings).listen(
-      (position) {
-        _handlePosition(
+        Geolocator.getPositionStream(locationSettings: settings).listen((
           position,
-          userId: userId,
-          tripId: tripId,
-          roomId: roomId,
-        );
-      },
-    );
+        ) {
+          _handlePosition(
+            position,
+            userId: userId,
+            tripId: tripId,
+            roomId: roomId,
+          );
+        });
   }
 
   void _joinRoom(String roomId) {

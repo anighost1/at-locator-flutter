@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlocator/core/routing/route_names.dart';
 import 'package:atlocator/features/auth/session/auth_session.dart';
+import 'package:atlocator/features/trip/session/trip_session.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -21,6 +22,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _openLogin() async {
     await Future.delayed(const Duration(milliseconds: 1800));
     await AuthSession.load();
+    await TripSession.load();
 
     if (!mounted) return;
     context.go(AuthSession.isLoggedIn ? RouteNames.home : RouteNames.login);
@@ -34,11 +36,7 @@ class _SplashScreenState extends State<SplashScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xff102A43),
-              Color(0xff006D77),
-              Color(0xffE8F7F5),
-            ],
+            colors: [Color(0xff102A43), Color(0xff006D77), Color(0xffE8F7F5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),

@@ -6,8 +6,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:atlocator/core/api/api_exception.dart';
 import 'package:atlocator/core/routing/route_names.dart';
-import 'package:atlocator/features/trip/presentation/trip_sample_data.dart';
+import 'package:atlocator/features/trip/models/trip_models.dart';
+import 'package:atlocator/features/trip/repository/trip_repository.dart';
 
 class TripReplayScreen extends StatefulWidget {
   const TripReplayScreen({super.key, required this.tripId});
@@ -19,12 +21,23 @@ class TripReplayScreen extends StatefulWidget {
 }
 
 class _TripReplayScreenState extends State<TripReplayScreen> {
-  final MapController _mapController = MapController();
-  Timer? _timer;
-  int _pointIndex = 0;
-  bool _isPlaying = false;
+  final _repository = TripRepository();
+  final _mapController = MapController();
 
-  TripSummary? get _trip => findSampleTrip(widget.tripId);
+  Timer? _timer;
+  TripSummary? _summary;
+  bool _loading = true;
+  bool _isPlaying = false;
+  String? _errorMessage;
+  int _pointIndex = 0;
+
+  int? get _tripId => int.tryParse(widget.tripId);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSummary();
+  }
 
   @override
   void dispose() {
@@ -33,16 +46,49 @@ class _TripReplayScreenState extends State<TripReplayScreen> {
     super.dispose();
   }
 
+  Future<void> _loadSummary() async {
+    final tripId = _tripId;
+    if (tripId == null) {
+      setState(() {
+        _loading = false;
+        _errorMessage = "Invalid trip id.";
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final summary = await _repository.getSummary(tripId);
+
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _pointIndex = 0;
+        _loading = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = _messageFor(error);
+        _loading = false;
+      });
+    }
+  }
+
   void _togglePlayback() {
     if (_isPlaying) {
       _pause();
       return;
     }
 
-    final trip = _trip;
-    if (trip == null) return;
+    final summary = _summary;
+    if (summary == null || summary.points.isEmpty) return;
 
-    if (_pointIndex >= trip.points.length - 1) {
+    if (_pointIndex >= summary.points.length - 1) {
       setState(() => _pointIndex = 0);
     }
 
@@ -50,7 +96,7 @@ class _TripReplayScreenState extends State<TripReplayScreen> {
     _timer = Timer.periodic(const Duration(milliseconds: 850), (_) {
       if (!mounted) return;
 
-      final lastIndex = trip.points.length - 1;
+      final lastIndex = summary.points.length - 1;
       if (_pointIndex >= lastIndex) {
         _pause();
         return;
@@ -76,31 +122,57 @@ class _TripReplayScreenState extends State<TripReplayScreen> {
   }
 
   void _moveMapToCurrentPoint() {
-    final trip = _trip;
-    if (trip == null || trip.points.isEmpty) return;
-    _mapController.move(trip.points[_pointIndex].position, 15.5);
+    final summary = _summary;
+    if (summary == null || summary.points.isEmpty) return;
+    _mapController.move(summary.points[_pointIndex].position, 16);
+  }
+
+  String _messageFor(Object error) {
+    if (error is ApiException) return error.message;
+    if (error is FormatException) return error.message;
+
+    return "Unable to load trip replay. Please try again.";
   }
 
   @override
   Widget build(BuildContext context) {
-    final trip = _trip;
+    final summary = _summary;
 
-    if (trip == null) {
-      return _MissingTripView(tripId: widget.tripId);
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
     }
 
-    final currentPoint = trip.points[_pointIndex];
-    final replayedPoints = trip.points
+    if (_errorMessage != null) {
+      return _ReplayNotice(
+        icon: Icons.error_outline_rounded,
+        title: _errorMessage!,
+        actionLabel: "Retry",
+        onAction: _loadSummary,
+      );
+    }
+
+    if (summary == null || summary.points.isEmpty) {
+      return _ReplayNotice(
+        icon: Icons.route_outlined,
+        title: "No replay points found for trip ${widget.tripId}",
+        actionLabel: "Back to Trips",
+        onAction: () => context.go(RouteNames.trip),
+      );
+    }
+
+    final currentPoint = summary.points[_pointIndex];
+    final replayedPoints = summary.points
         .take(_pointIndex + 1)
         .map((point) => point.position)
         .toList();
-    final allPoints = trip.points.map((point) => point.position).toList();
+    final allPoints = summary.points.map((point) => point.position).toList();
 
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
           child: _ReplayHeader(
-            trip: trip,
+            tripId: widget.tripId,
+            summary: summary,
             currentPoint: currentPoint,
             onBack: () => context.go(RouteNames.trip),
           ),
@@ -111,14 +183,13 @@ class _TripReplayScreenState extends State<TripReplayScreen> {
             delegate: SliverChildListDelegate([
               _ReplayMap(
                 mapController: _mapController,
-                trip: trip,
                 currentPoint: currentPoint,
                 allPoints: allPoints,
                 replayedPoints: replayedPoints,
               ),
               const SizedBox(height: 16),
               _ReplayControls(
-                trip: trip,
+                summary: summary,
                 currentPoint: currentPoint,
                 pointIndex: _pointIndex,
                 isPlaying: _isPlaying,
@@ -126,7 +197,7 @@ class _TripReplayScreenState extends State<TripReplayScreen> {
                 onChanged: _setReplayPosition,
               ),
               const SizedBox(height: 16),
-              _StatsGrid(trip: trip, currentPoint: currentPoint),
+              _StatsGrid(summary: summary, currentPoint: currentPoint),
             ]),
           ),
         ),
@@ -137,12 +208,14 @@ class _TripReplayScreenState extends State<TripReplayScreen> {
 
 class _ReplayHeader extends StatelessWidget {
   const _ReplayHeader({
-    required this.trip,
+    required this.tripId,
+    required this.summary,
     required this.currentPoint,
     required this.onBack,
   });
 
-  final TripSummary trip;
+  final String tripId;
+  final TripSummary summary;
   final TripPoint currentPoint;
   final VoidCallback onBack;
 
@@ -172,7 +245,7 @@ class _ReplayHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  trip.title,
+                  "Trip #$tripId replay",
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
@@ -180,7 +253,7 @@ class _ReplayHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "${trip.subtitle} - ${_durationLabel(currentPoint.recordedOffset)} into replay",
+                  "${summary.totalPoints} points - ${_durationLabel(Duration(seconds: summary.durationSeconds))}",
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: .78),
                     fontSize: 14,
@@ -199,14 +272,12 @@ class _ReplayHeader extends StatelessWidget {
 class _ReplayMap extends StatelessWidget {
   const _ReplayMap({
     required this.mapController,
-    required this.trip,
     required this.currentPoint,
     required this.allPoints,
     required this.replayedPoints,
   });
 
   final MapController mapController;
-  final TripSummary trip;
   final TripPoint currentPoint;
   final List<LatLng> allPoints;
   final List<LatLng> replayedPoints;
@@ -219,10 +290,7 @@ class _ReplayMap extends StatelessWidget {
         height: 320,
         child: FlutterMap(
           mapController: mapController,
-          options: MapOptions(
-            initialCenter: trip.points.first.position,
-            initialZoom: 15.2,
-          ),
+          options: MapOptions(initialCenter: allPoints.first, initialZoom: 16),
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -250,13 +318,13 @@ class _ReplayMap extends StatelessWidget {
             MarkerLayer(
               markers: [
                 Marker(
-                  point: trip.points.first.position,
+                  point: allPoints.first,
                   width: 34,
                   height: 34,
                   child: const _ReplayFlag(icon: Icons.flag_rounded),
                 ),
                 Marker(
-                  point: trip.points.last.position,
+                  point: allPoints.last,
                   width: 34,
                   height: 34,
                   child: const _ReplayFlag(icon: Icons.location_on_rounded),
@@ -265,7 +333,9 @@ class _ReplayMap extends StatelessWidget {
                   point: currentPoint.position,
                   width: 46,
                   height: 46,
-                  child: _ReplayHeadingMarker(heading: currentPoint.heading),
+                  child: _ReplayHeadingMarker(
+                    heading: currentPoint.heading.round(),
+                  ),
                 ),
               ],
             ),
@@ -278,7 +348,7 @@ class _ReplayMap extends StatelessWidget {
 
 class _ReplayControls extends StatelessWidget {
   const _ReplayControls({
-    required this.trip,
+    required this.summary,
     required this.currentPoint,
     required this.pointIndex,
     required this.isPlaying,
@@ -286,7 +356,7 @@ class _ReplayControls extends StatelessWidget {
     required this.onChanged,
   });
 
-  final TripSummary trip;
+  final TripSummary summary;
   final TripPoint currentPoint;
   final int pointIndex;
   final bool isPlaying;
@@ -318,7 +388,7 @@ class _ReplayControls extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _durationLabel(currentPoint.recordedOffset),
+                      _timeLabel(currentPoint.recordedAt),
                       style: const TextStyle(
                         color: Color(0xff102A43),
                         fontSize: 18,
@@ -327,7 +397,7 @@ class _ReplayControls extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      "Point ${pointIndex + 1} of ${trip.points.length}",
+                      "Point ${pointIndex + 1} of ${summary.points.length}",
                       style: TextStyle(
                         color: Colors.blueGrey.shade500,
                         fontSize: 12,
@@ -343,8 +413,8 @@ class _ReplayControls extends StatelessWidget {
           Slider(
             value: pointIndex.toDouble(),
             min: 0,
-            max: (trip.points.length - 1).toDouble(),
-            divisions: trip.points.length - 1,
+            max: (summary.points.length - 1).toDouble(),
+            divisions: summary.points.length - 1,
             activeColor: const Color(0xff006D77),
             onChanged: onChanged,
           ),
@@ -355,9 +425,9 @@ class _ReplayControls extends StatelessWidget {
 }
 
 class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({required this.trip, required this.currentPoint});
+  const _StatsGrid({required this.summary, required this.currentPoint});
 
-  final TripSummary trip;
+  final TripSummary summary;
   final TripPoint currentPoint;
 
   @override
@@ -377,37 +447,37 @@ class _StatsGrid extends StatelessWidget {
             _MetricCard(
               icon: Icons.speed_rounded,
               label: "Current speed",
-              value: currentPoint.speedKmh.toString(),
+              value: currentPoint.speedKmh.toStringAsFixed(1),
               unit: "km/h",
             ),
             _MetricCard(
               icon: Icons.rocket_launch_rounded,
               label: "Top speed",
-              value: trip.topSpeedKmh.toString(),
+              value: summary.topSpeed.toStringAsFixed(1),
               unit: "km/h",
             ),
             _MetricCard(
               icon: Icons.query_stats_rounded,
               label: "Average speed",
-              value: trip.averageSpeedKmh.toString(),
+              value: summary.averageSpeed.toStringAsFixed(1),
               unit: "km/h",
             ),
             _MetricCard(
               icon: Icons.explore_rounded,
               label: "Heading",
-              value: currentPoint.heading.toString(),
+              value: currentPoint.heading.round().toString(),
               unit: "deg",
             ),
             _MetricCard(
-              icon: Icons.navigation_rounded,
-              label: "Average heading",
-              value: trip.averageHeading.toString(),
-              unit: "deg",
+              icon: Icons.gps_fixed_rounded,
+              label: "Accuracy",
+              value: currentPoint.accuracy.toStringAsFixed(0),
+              unit: "m",
             ),
             _MetricCard(
               icon: Icons.straighten_rounded,
               label: "Distance",
-              value: trip.distanceKm.toStringAsFixed(1),
+              value: summary.distanceKm.toStringAsFixed(2),
               unit: "km",
             ),
           ],
@@ -565,10 +635,18 @@ class _ReplayHeadingMarker extends StatelessWidget {
   }
 }
 
-class _MissingTripView extends StatelessWidget {
-  const _MissingTripView({required this.tripId});
+class _ReplayNotice extends StatelessWidget {
+  const _ReplayNotice({
+    required this.icon,
+    required this.title,
+    required this.actionLabel,
+    required this.onAction,
+  });
 
-  final String tripId;
+  final IconData icon;
+  final String title;
+  final String actionLabel;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -578,14 +656,10 @@ class _MissingTripView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.route_outlined,
-              color: Color(0xff006D77),
-              size: 48,
-            ),
+            Icon(icon, color: const Color(0xff006D77), size: 48),
             const SizedBox(height: 12),
             Text(
-              "Trip $tripId was not found",
+              title,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: const Color(0xff102A43),
@@ -594,9 +668,9 @@ class _MissingTripView extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
-              onPressed: () => context.go(RouteNames.trip),
-              icon: const Icon(Icons.arrow_back_rounded),
-              label: const Text("Back to Trips"),
+              onPressed: onAction,
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(actionLabel),
             ),
           ],
         ),
@@ -613,4 +687,15 @@ String _durationLabel(Duration duration) {
   if (seconds == 0) return "${minutes}m";
 
   return "${minutes}m ${seconds}s";
+}
+
+String _timeLabel(DateTime? dateTime) {
+  if (dateTime == null) return "Recorded point";
+
+  final local = dateTime.toLocal();
+  final hour = local.hour.toString().padLeft(2, "0");
+  final minute = local.minute.toString().padLeft(2, "0");
+  final second = local.second.toString().padLeft(2, "0");
+
+  return "$hour:$minute:$second";
 }
