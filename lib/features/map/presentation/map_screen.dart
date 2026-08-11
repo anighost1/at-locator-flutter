@@ -429,15 +429,158 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             top: 16,
             child: _LocationNotice(message: _locationMessage!),
           ),
+        // Compact action buttons: users on left, locate on right — aligned vertically
         Positioned(
-          bottom: 20,
-          right: 16,
+          bottom: 18,
+          left: 12,
           child: FloatingActionButton(
-            heroTag: "locate",
+            heroTag: 'users_compact',
+            mini: true,
+            backgroundColor: const Color(0xff006D77),
+            elevation: 8,
+            tooltip: 'Show connected users',
+            onPressed: () {
+              final snapshot = LocationSocketService.instance.snapshot;
+              final members = [
+                ...snapshot.members.values,
+                ..._dummyMembers,
+              ];
+
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                builder: (context) {
+                  return StatefulBuilder(builder: (context, setState) {
+                    String query = '';
+                    List<MemberLocation> filtered = members;
+
+                    void applyFilter(String q) {
+                      query = q.trim().toLowerCase();
+                      filtered = members.where((m) {
+                        final name = (m.displayName ?? '').toLowerCase();
+                        return name.contains(query) || m.userId.toString().contains(query);
+                      }).toList();
+                    }
+
+                    applyFilter('');
+
+                    return SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                        child: SizedBox(
+                          height: math.min(520, filtered.length * 82 + 140),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      decoration: InputDecoration(
+                                        hintText: 'Search by name or id',
+                                        prefixIcon: const Icon(Icons.search),
+                                        filled: true,
+                                        fillColor: Colors.grey.shade100,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      onChanged: (val) {
+                                        setState(() {
+                                          applyFilter(val);
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Close',
+                                    onPressed: () => Navigator.of(context).pop(),
+                                    icon: const Icon(Icons.close),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: filtered.isEmpty
+                                    ? Center(child: Text('No users found'))
+                                    : ListView.separated(
+                                        separatorBuilder: (_, __) => const Divider(height: 1),
+                                        itemCount: filtered.length,
+                                        itemBuilder: (context, i) {
+                                          final m = filtered[i];
+                                          final distanceMeters = _currentLocation == null
+                                              ? null
+                                              : const Distance().as(
+                                                  LengthUnit.Meter,
+                                                  _currentLocation!,
+                                                  LatLng(m.latitude, m.longitude),
+                                                );
+
+                                          final distanceText = distanceMeters == null
+                                              ? '—'
+                                              : (distanceMeters >= 1000
+                                                  ? '${(distanceMeters / 1000).toStringAsFixed(2)} km'
+                                                  : '${distanceMeters.round()} m');
+
+                                          return ListTile(
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                            leading: CircleAvatar(
+                                              radius: 22,
+                                              backgroundColor: Colors.orange,
+                                              child: Text(
+                                                m.displayName != null && m.displayName!.isNotEmpty
+                                                    ? m.displayName!.substring(0, 1).toUpperCase()
+                                                    : m.userId.toString(),
+                                                style: const TextStyle(color: Colors.white),
+                                              ),
+                                            ),
+                                            title: Text(m.displayName ?? 'User ${m.userId}'),
+                                            subtitle: Text('Last: ${m.recordedAt.toLocal()} • $distanceText'),
+                                            trailing: IconButton(
+                                              tooltip: 'Fly to user',
+                                              onPressed: () {
+                                                Navigator.of(context).pop();
+                                                _animatedMapController.animateTo(
+                                                  dest: LatLng(m.latitude, m.longitude),
+                                                  zoom: 17,
+                                                );
+                                              },
+                                              icon: const Icon(Icons.flight_takeoff_rounded),
+                                            ),
+                                            onTap: () {
+                                              Navigator.of(context).pop();
+                                              _animatedMapController.animateTo(
+                                                dest: LatLng(m.latitude, m.longitude),
+                                                zoom: 17,
+                                              );
+                                            },
+                                          );
+                                        },
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  });
+                },
+              );
+            },
+            child: const Icon(Icons.people_rounded, color: Colors.white),
+          ),
+        ),
+        Positioned(
+          bottom: 18,
+          right: 12,
+          child: FloatingActionButton(
+            heroTag: "locate_compact",
             mini: true,
             backgroundColor: const Color(0xff0B7285),
             tooltip: 'Center on my location',
-            elevation: 6,
+            elevation: 8,
             onPressed: _goToMyLocation,
             child: _locating
                 ? const SizedBox(
@@ -449,113 +592,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     _followUser ? Icons.my_location : Icons.location_searching,
                     color: Colors.white,
                   ),
-          ),
-        ),
-        Positioned(
-          bottom: 86,
-          left: 16,
-          child: FloatingActionButton(
-            heroTag: "users",
-            mini: true,
-            backgroundColor: const Color(0xff006D77),
-            tooltip: 'Show connected users',
-            elevation: 6,
-            onPressed: () {
-              final snapshot = LocationSocketService.instance.snapshot;
-              final members = [
-                ...snapshot.members.values,
-                ..._dummyMembers,
-              ];
-
-              showModalBottomSheet(
-                context: context,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                builder: (context) {
-                  return SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: SizedBox(
-                        height: math.min(420, members.length * 76 + 80),
-                        child: Column(
-                          children: [
-                            ListTile(
-                              title: const Text('Connected users'),
-                              subtitle: Text('${members.length} total'),
-                              trailing: IconButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(Icons.close),
-                              ),
-                            ),
-                            const Divider(height: 1),
-                            Expanded(
-                              child: ListView.builder(
-                                itemCount: members.length,
-                                itemBuilder: (context, i) {
-                                  final m = members[i];
-                                  final distanceMeters = _currentLocation == null
-                                      ? null
-                                      : const Distance().as(
-                                          LengthUnit.Meter,
-                                          _currentLocation!,
-                                          LatLng(m.latitude, m.longitude),
-                                        );
-
-                                  final distanceText = distanceMeters == null
-                                      ? '—'
-                                      : (distanceMeters >= 1000
-                                          ? '${(distanceMeters / 1000).toStringAsFixed(2)} km'
-                                          : '${distanceMeters.round()} m');
-
-                                  return ListTile(
-                                    leading: Stack(
-                                      alignment: Alignment.bottomRight,
-                                      children: [
-                                        CircleAvatar(
-                                          backgroundColor: Colors.orange,
-                                          child: Text(
-                                            m.displayName != null && m.displayName!.isNotEmpty
-                                                ? m.displayName!.substring(0, 1).toUpperCase()
-                                                : m.userId.toString(),
-                                            style: const TextStyle(color: Colors.white),
-                                          ),
-                                        ),
-                                        Container(
-                                          width: 10,
-                                          height: 10,
-                                          decoration: BoxDecoration(
-                                            color: Colors.green,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 1.6),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    title: Text(m.displayName ?? 'User ${m.userId}'),
-                                    subtitle: Text('Last: ${m.recordedAt.toLocal()} • $distanceText'),
-                                    trailing: IconButton(
-                                      tooltip: 'Fly to user',
-                                      onPressed: () {
-                                        Navigator.of(context).pop();
-                                        _animatedMapController.animateTo(
-                                          dest: LatLng(m.latitude, m.longitude),
-                                          zoom: 17,
-                                        );
-                                      },
-                                      icon: const Icon(Icons.flight_takeoff_rounded),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-            child: const Icon(Icons.people_rounded, color: Colors.white),
           ),
         ),
       ],
