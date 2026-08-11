@@ -132,7 +132,7 @@ class _HomeHeader extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           Text(
-            "Trip #${snapshot.tripId}",
+            snapshot.tripId > 0 ? "Trip #${snapshot.tripId}" : "No active trip",
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -141,8 +141,12 @@ class _HomeHeader extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             snapshot.isConnected
-                ? "Your device is sending GPS data to ${snapshot.roomId}."
-                : "Connecting your device to ${snapshot.roomId}.",
+                ? snapshot.roomId.isNotEmpty
+                    ? "Your device is sending GPS data to ${snapshot.roomId}."
+                    : "Socket connected and waiting for an active trip."
+                : snapshot.roomId.isNotEmpty
+                    ? "Connecting your device to ${snapshot.roomId}."
+                    : "Connecting your device to the server.",
             style: TextStyle(
               color: Colors.white.withOpacity(.78),
               fontSize: 14,
@@ -160,6 +164,14 @@ class _HomeHeader extends StatelessWidget {
                     ? "Socket connected"
                     : "Socket connecting",
               ),
+              if (snapshot.isConnected && snapshot.roomId.isEmpty)
+                _StatusPill(
+                  icon: Icons.hourglass_bottom_rounded,
+                  label: "Waiting for active trip",
+                  backgroundColor: const Color(0xffF4A261).withOpacity(.2),
+                  borderColor: const Color(0xffF4A261).withOpacity(.38),
+                  textColor: const Color(0xffffffff),
+                ),
               _StatusPill(
                 icon: Icons.gps_fixed_rounded,
                 label: snapshot.hasLocation ? "GPS locked" : "GPS searching",
@@ -566,29 +578,42 @@ class _TelemetryCard extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.icon, required this.label});
+  const _StatusPill({
+    required this.icon,
+    required this.label,
+    this.backgroundColor,
+    this.borderColor,
+    this.textColor,
+  });
 
   final IconData icon;
   final String label;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final Color? textColor;
 
   @override
   Widget build(BuildContext context) {
+    final bgColor = backgroundColor ?? Colors.white.withOpacity(.14);
+    final bdColor = borderColor ?? Colors.white.withOpacity(.18);
+    final fgColor = textColor ?? Colors.white;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(.14),
+        color: bgColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withOpacity(.18)),
+        border: Border.all(color: bdColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 16),
+          Icon(icon, color: fgColor, size: 16),
           const SizedBox(width: 7),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: fgColor,
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),

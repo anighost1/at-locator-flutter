@@ -27,12 +27,11 @@ class LocationSocketService {
 
   Future<void> start({
     int? userId,
-    required int tripId,
-    required String roomId,
+    int tripId = 0,
+    String roomId = "",
   }) async {
     final resolvedUserId = userId ?? AuthSession.userId;
     if (resolvedUserId == null) return;
-    if (tripId <= 0 || roomId.trim().isEmpty) return;
 
     if (_started) {
       if (_snapshot.tripId == tripId && _snapshot.roomId == roomId) return;
@@ -82,7 +81,9 @@ class LocationSocketService {
       ?..onConnect((_) {
         debugPrint("Socket connected to ${AppConfig.socketBaseUrl}$normalizedPath");
         _updateSnapshot(_snapshot.copyWith(isConnected: true));
-        _joinRoom(roomId);
+        if (roomId.trim().isNotEmpty) {
+          _joinRoom(roomId);
+        }
       })
       ..onConnectError((error) {
         debugPrint("Socket connection failed: $error");
@@ -169,8 +170,6 @@ class LocationSocketService {
     required int tripId,
     required String roomId,
   }) {
-    if (!_started || tripId <= 0 || roomId.trim().isEmpty) return;
-
     final telemetry = LocationTelemetry.fromPosition(position);
     final packets = [telemetry, ..._snapshot.recentPackets].take(5).toList();
 
@@ -182,7 +181,7 @@ class LocationSocketService {
       ),
     );
 
-    if (!isConnected) return;
+    if (!isConnected || tripId <= 0 || roomId.trim().isEmpty) return;
 
     _socket?.emit("location-update", {
       "userId": userId,

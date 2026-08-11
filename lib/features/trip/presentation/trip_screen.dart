@@ -52,7 +52,7 @@ class _TripScreenState extends State<TripScreen> {
         await _startTripSocket(ongoing);
       } else {
         await TripSession.clear();
-        await LocationSocketService.instance.stop();
+        await LocationSocketService.instance.start();
       }
 
       if (!mounted) return;
@@ -117,8 +117,8 @@ class _TripScreenState extends State<TripScreen> {
 
     try {
       await _repository.endTrip(trip.id);
-      await LocationSocketService.instance.stop();
       await TripSession.clear();
+      await LocationSocketService.instance.start();
       final trips = await _repository.getTrips();
 
       if (!mounted) return;
