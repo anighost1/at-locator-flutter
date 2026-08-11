@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlocator/core/routing/route_names.dart';
 import 'package:atlocator/features/location/location_socket_service.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -31,15 +32,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final location = GoRouterState.of(context).uri.path;
 
     switch (location) {
-      case '/home':
+      case RouteNames.home:
         return 0;
-      case '/map':
+      case RouteNames.map:
         return 1;
-      case '/history':
+      case RouteNames.trip:
         return 2;
-      case '/profile':
+      case RouteNames.profile:
         return 3;
       default:
+        if (location.startsWith('/trip/')) return 2;
         return 0;
     }
   }
@@ -56,16 +58,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: (value) {
           switch (value) {
             case 0:
-              context.go('/home');
+              context.go(RouteNames.home);
               break;
             case 1:
-              context.go('/map');
+              context.go(RouteNames.map);
               break;
             case 2:
-              context.go('/history');
+              context.go(RouteNames.trip);
               break;
             case 3:
-              context.go('/profile');
+              context.go(RouteNames.profile);
               break;
           }
         },
@@ -85,10 +87,7 @@ class _DashboardSafeArea extends StatelessWidget {
       color: const Color(0xff102A43),
       child: SafeArea(
         bottom: false,
-        child: ColoredBox(
-          color: const Color(0xffF7FAFB),
-          child: child,
-        ),
+        child: ColoredBox(color: const Color(0xffF7FAFB), child: child),
       ),
     );
   }
@@ -106,7 +105,7 @@ class _DashboardNavigationBar extends StatelessWidget {
   static const _items = [
     _NavigationItem(Icons.home_rounded, 'Home'),
     _NavigationItem(Icons.map_rounded, 'Map'),
-    _NavigationItem(Icons.history_rounded, 'History'),
+    _NavigationItem(Icons.route_rounded, 'Trip'),
     _NavigationItem(Icons.person_rounded, 'Profile'),
   ];
 

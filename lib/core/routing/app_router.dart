@@ -2,11 +2,12 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlocator/features/auth/presentation/login_screen.dart';
 import 'package:atlocator/features/dashboard/presentation/dashboard_screen.dart';
-import 'package:atlocator/features/history/presentation/history_screen.dart';
 import 'package:atlocator/features/home/presentation/home_screen.dart';
 import 'package:atlocator/features/map/presentation/map_screen.dart';
 import 'package:atlocator/features/profile/presentation/profile_screen.dart';
 import 'package:atlocator/features/splash/presentation/splash_screen.dart';
+import 'package:atlocator/features/trip/presentation/trip_replay_screen.dart';
+import 'package:atlocator/features/trip/presentation/trip_screen.dart';
 
 import 'route_names.dart';
 
@@ -43,8 +44,16 @@ final GoRouter router = GoRouter(
         ),
 
         GoRoute(
-          path: RouteNames.history,
-          builder: (context, state) => const HistoryScreen(),
+          path: RouteNames.trip,
+          builder: (context, state) => const TripScreen(),
+        ),
+
+        GoRoute(
+          path: RouteNames.tripReplay,
+          builder: (context, state) {
+            final tripId = state.pathParameters['tripId'] ?? '';
+            return TripReplayScreen(tripId: tripId);
+          },
         ),
 
         GoRoute(

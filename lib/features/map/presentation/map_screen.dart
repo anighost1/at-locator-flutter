@@ -1,7 +1,3 @@
-// NOTE:
-// This file demonstrates the architecture using AnimatedMapController.
-// You will need to finish wiring the AnimatedMapController calls if you
-// want additional custom behavior.
 
 import 'dart:async';
 import 'dart:math' as math;
