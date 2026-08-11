@@ -17,9 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Ensure socket attempts to connect when HomeScreen is shown.
-    // `start()` is a no-op if there is no authenticated user.
-    LocationSocketService.instance.start();
+    // HomeScreen no longer owns socket startup; it is handled by the app shell.
   }
 
   @override
